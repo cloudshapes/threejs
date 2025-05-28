@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Zuck Ping!</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+
+<audio id="ping-sound" src="ping.mp3" preload="auto"></audio>
+
+<script type="module">
+  import * as THREE from 'https://esm.sh/three@0.160.0';
+  import { GLTFLoader } from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader';
+  import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls';
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x111111);
+
+  const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+  camera.position.set(0, 1.5, 4);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+  scene.add(ambientLight);
+
+  const pointLight = new THREE.PointLight(0xffffff, 1);
+  pointLight.position.set(5, 5, 5);
+  scene.add(pointLight);
+
+  const loader = new GLTFLoader();
+  let brain;
+
+  let isAnimating = false;
+  let zoomingOut = false;
+  let zoomingIn = false;
+  let zoomStartTime = 0;
+  let originalPosition = new THREE.Vector3();
+  let targetPosition = new THREE.Vector3();
+  const duration = 1.0;
+
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+
+  const pingSound = document.getElementById('ping-sound');
+
+  loader.load('zuck-head.glb', (gltf) => {
+    brain = gltf.scene;
+
+    const box = new THREE.Box3().setFromObject(brain);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const maxDimension = Math.max(size.x, size.y, size.z);
+    const scaleFactor = 2 / maxDimension;
+    brain.scale.setScalar(scaleFactor);
+
+    const scaledBox = new THREE.Box3().setFromObject(brain);
+    const center = new THREE.Vector3();
+    scaledBox.getCenter(center);
+    brain.position.sub(center);
+
+    originalPosition.copy(brain.position);
+    targetPosition.copy(brain.position).add(new THREE.Vector3(0, 0, -5));
+
+    scene.add(brain);
+
+    const sphere = new THREE.Sphere();
+    scaledBox.getBoundingSphere(sphere);
+    camera.position.copy(sphere.center.clone().add(new THREE.Vector3(0, 0, sphere.radius * 2.5)));
+    camera.lookAt(sphere.center);
+  }, undefined, (error) => {
+    console.error('Error loading brain model:', error);
+  });
+
+  function onClick(event) {
+    if (!brain || isAnimating) return;
+
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObject(brain, true);
+
+    if (intersects.length > 0) {
+      isAnimating = true;
+      zoomingOut = true;
+      zoomStartTime = clock.getElapsedTime();
+
+      // 🔊 Play local MP3
+      pingSound.currentTime = 0;
+      pingSound.play().catch(err => {
+        console.warn('Audio play was blocked or failed:', err);
+      });
+    }
+  }
+
+  window.addEventListener('click', onClick);
+
+  const clock = new THREE.Clock();
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const t = clock.getElapsedTime();
+
+    if (brain) {
+      const scale = 1 + 0.05 * Math.sin(t * 2);
+      brain.scale.set(scale, scale, scale);
+
+      if (isAnimating) {
+        const elapsed = t - zoomStartTime;
+        const alpha = Math.min(elapsed / duration, 1.0);
+
+        if (zoomingOut) {
+          brain.position.lerpVectors(originalPosition, targetPosition, alpha);
+          if (alpha >= 1.0) {
+            zoomingOut = false;
+            zoomingIn = true;
+            zoomStartTime = t;
+          }
+        } else if (zoomingIn) {
+          brain.position.lerpVectors(targetPosition, originalPosition, alpha);
+          if (alpha >= 1.0) {
+            zoomingIn = false;
+            isAnimating = false;
+          }
+        }
+      }
+    }
+
+    controls.update();
+    renderer.render(scene, camera);
+  }
+
+  animate();
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+</script>
+</body>
+</html>
+
