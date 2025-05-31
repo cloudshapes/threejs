@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Bouncing Balls - Clean Start</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<audio id="oooh-sound" src="oooh.mp3" preload="auto"></audio>
+
+<script type="module">
+  import * as THREE from 'https://esm.sh/three@0.160.0';
+  import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls';
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x202020);
+
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+  // camera.position.set(0, 10, 14); // Zoomed out for full bounding box view
+  camera.position.set(0, 12, 22);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+
+  // Lighting
+  scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  dirLight.position.set(5, 10, 7.5);
+  scene.add(dirLight);
+
+  // Floor
+  const floorMat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.8 });
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(20, 20), floorMat);
+  floor.rotation.x = -Math.PI / 2;
+  scene.add(floor);
+
+  // Bounding Box
+  const boundsSize = 9;
+  const radius = 1;
+
+  const boxGeo = new THREE.BoxGeometry(boundsSize, boundsSize, boundsSize);
+  const boxWire = new THREE.EdgesGeometry(boxGeo);
+  const bounds = new THREE.LineSegments(boxWire, new THREE.LineBasicMaterial({ color: 0x888888 }));
+  bounds.position.y = boundsSize / 2;
+  scene.add(bounds);
+
+  const limits = {
+    minX: -boundsSize / 2 + radius,
+    maxX: boundsSize / 2 - radius,
+    minZ: -boundsSize / 2 + radius,
+    maxZ: boundsSize / 2 - radius,
+  };
+
+  // Ball creation
+  const textureLoader = new THREE.TextureLoader();
+  const ballTextures = ['ball1.jpg', 'ball2.jpg', 'ball3.jpg'];
+  const balls = [];
+
+  function generateNonOverlappingPosition(existingBalls) {
+    const maxAttempts = 100;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const pos = new THREE.Vector3(
+        THREE.MathUtils.randFloat(limits.minX, limits.maxX),
+        radius,
+        THREE.MathUtils.randFloat(limits.minZ, limits.maxZ)
+      );
+
+      const overlaps = existingBalls.some(b =>
+        pos.distanceTo(b.position) < radius * 2
+      );
+
+      if (!overlaps) return pos;
+    }
+    throw new Error("Couldn't place non-overlapping balls after max attempts.");
+  }
+
+  for (let i = 0; i < ballTextures.length; i++) {
+    const tex = textureLoader.load(ballTextures[i]);
+    const mat = new THREE.MeshStandardMaterial({ map: tex });
+    const sphere = new THREE.Mesh(new THREE.SphereGeometry(radius, 32, 32), mat);
+
+    sphere.position.copy(generateNonOverlappingPosition(balls));
+    sphere.userData.velocity = new THREE.Vector3(
+      (Math.random() - 0.5) * 0.1,
+      0,
+      (Math.random() - 0.5) * 0.1
+    );
+
+    balls.push(sphere);
+    scene.add(sphere);
+  }
+
+  // Click sound
+  const sound = document.getElementById('oooh-sound');
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+
+  window.addEventListener('click', (event) => {
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects(balls);
+
+    if (intersects.length > 0) {
+      sound.currentTime = 0;
+      sound.play().catch(err => console.warn('Audio failed:', err));
+    }
+  });
+
+  const clock = new THREE.Clock();
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const dt = clock.getDelta();
+
+    balls.forEach((ball, i) => {
+      ball.rotation.x += 0.02;
+      ball.rotation.y += 0.02;
+      ball.position.addScaledVector(ball.userData.velocity, dt * 60);
+
+      if (ball.position.x < limits.minX || ball.position.x > limits.maxX) {
+        ball.userData.velocity.x *= -1;
+      }
+      if (ball.position.z < limits.minZ || ball.position.z > limits.maxZ) {
+        ball.userData.velocity.z *= -1;
+      }
+
+      for (let j = i + 1; j < balls.length; j++) {
+        const other = balls[j];
+        const dist = ball.position.distanceTo(other.position);
+        if (dist < radius * 2) {
+          const temp = ball.userData.velocity.clone();
+          ball.userData.velocity.copy(other.userData.velocity);
+          other.userData.velocity.copy(temp);
+        }
+      }
+    });
+
+    controls.update();
+    renderer.render(scene, camera);
+  }
+
+  animate();
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+</script>
+</body>
+</html>
