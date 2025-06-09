@@ -3,6 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <title>Bouncing Balls - Clean Start</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
   <style>
     body { margin: 0; overflow: hidden; }
     canvas { display: block; }
@@ -12,8 +20,9 @@
 <audio id="oooh-sound" src="doorbell.mp3" preload="auto"></audio>
 
 <script type="module">
-  import * as THREE from 'https://esm.sh/three@0.160.0';
-  import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls';
+  import * as THREE from 'three';
+  import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x202020);
