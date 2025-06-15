@@ -63,6 +63,15 @@ function init() {
 		[[1.0, 0.2, 0.5], sprite2, 100]
 	];
 
+	parameters = [
+		[[ 1.0, 0.2, 0.5 ], sprite2, 40 ],
+		[[ 0.95, 0.1, 0.5 ], sprite3, 35 ],
+		[[ 0.90, 0.05, 0.5 ], sprite1, 30 ],
+		[[ 0.85, 0, 0.5 ], sprite5, 28 ],
+		[[ 0.80, 0, 0.5 ], sprite4, 25 ]
+	];
+
+
 	for (let i = 0; i < parameters.length; i++) {
 		const color = parameters[i][0];
 		const sprite = parameters[i][1];
@@ -91,12 +100,14 @@ function init() {
 
 
 	// Add axes helper:
-	const axesHelper = new THREE.AxesHelper(1000); // size = length of each axis
+	// The X axis is red. The Y axis is green. The Z axis is blue.
+	const axesHelper = new THREE.AxesHelper(10000); // size = length of each axis
 	scene.add(axesHelper);
 
 
 	// Camera setup to frame the box
-	camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 3000);
+	camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 10000);
+
 	const size = new THREE.Vector3();
 	const center = new THREE.Vector3();
 	geometryBox.getSize(size);
@@ -153,7 +164,9 @@ function render() {
 	for ( let i = 0; i < scene.children.length; i ++ ) {
 		const object = scene.children[ i ];
 		if ( object instanceof THREE.Points ) {
-			object.rotation.y = time * ( i < 4 ? i + 1 : - ( i + 1 ) );
+			// Rotates the entire THREE.Points object around its X axis (left-to-right line in 3D space).
+			// This is defining the rotation around the X axis which in turn adjusts the Y and Z values
+			object.rotation.x = time * ( i < 4 ? i + 1 : - ( i + 1 ) );
 		}
 	}
 
