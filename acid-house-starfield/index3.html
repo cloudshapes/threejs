@@ -38,7 +38,7 @@
 			let windowHalfY = window.innerHeight / 2;
 
 			const materials = [];
-			const N_VERTICES = 5; // Was originally, 10,000
+			const N_VERTICES = 15; // Was originally, 10,000
 
 			init();
 
@@ -51,7 +51,6 @@
 				scene.fog = new THREE.FogExp2( 0x0000, 0.00025 );
 
 				const geometry = new THREE.BufferGeometry();
-				// const vertices = [];
 
 				const textureLoader = new THREE.TextureLoader();
 
@@ -68,8 +67,9 @@
 				const sprite4 = textureLoader.load( 'ah-4.png', assignSRGB );
 				const sprite5 = textureLoader.load( 'ah-5.png', assignSRGB );
 
-				/*
+				
 				// Generate n vertices.
+				const vertices = [];
 				for ( let i = 0; i < N_VERTICES; i ++ ) {
 
 					const x = Math.random() * 2000 - 1000;
@@ -79,8 +79,9 @@
 					vertices.push( x, y, z );
 
 				}
-				*/
+				
 
+				/*
 				const vertices = [
 				  -500, -500, 0,
 				   500, -500, 0,
@@ -88,6 +89,7 @@
 				  -500,  500, 0,
 				     0,    0, 0
 				];
+				*/
 
 				geometry.setAttribute( 'position', new THREE.Float32BufferAttribute( vertices, 3 ) );
 
@@ -118,6 +120,20 @@
 					scene.add( particles );
 
 				}
+
+
+				// Add box helper:
+				const geometryBox = new THREE.Box3().setFromBufferAttribute(
+				  geometry.getAttribute('position')
+				);
+				const boxHelper = new THREE.Box3Helper(geometryBox, 0xff00ff);
+				scene.add(boxHelper);
+
+
+				// Add axes helper:
+				const axesHelper = new THREE.AxesHelper(100); // size = length of each axis
+				scene.add(axesHelper);
+
 
 				renderer = new THREE.WebGLRenderer();
 				renderer.setPixelRatio( window.devicePixelRatio );
@@ -205,7 +221,7 @@
 
 					if ( object instanceof THREE.Points ) {
 
-						object.rotation.y = time * ( i < 4 ? i + 1 : - ( i + 1 ) );
+						// object.rotation.y = time * ( i < 4 ? i + 1 : - ( i + 1 ) );
 
 					}
 
