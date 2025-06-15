@@ -38,7 +38,7 @@
 			let windowHalfY = window.innerHeight / 2;
 
 			const materials = [];
-			const N_VERTICES = 5; // Was originally, 10,000
+			const N_VERTICES = 500; // Was originally, 10,000
 
 			init();
 
@@ -51,7 +51,7 @@
 				scene.fog = new THREE.FogExp2( 0x0000, 0.00025 );
 
 				const geometry = new THREE.BufferGeometry();
-				// const vertices = [];
+				const vertices = [];
 
 				const textureLoader = new THREE.TextureLoader();
 
@@ -68,7 +68,6 @@
 				const sprite4 = textureLoader.load( 'ah-4.png', assignSRGB );
 				const sprite5 = textureLoader.load( 'ah-5.png', assignSRGB );
 
-				/*
 				// Generate n vertices.
 				for ( let i = 0; i < N_VERTICES; i ++ ) {
 
@@ -79,21 +78,13 @@
 					vertices.push( x, y, z );
 
 				}
-				*/
-
-				const vertices = [
-				  -500, -500, 0,
-				   500, -500, 0,
-				   500,  500, 0,
-				  -500,  500, 0,
-				     0,    0, 0
-				];
 
 				geometry.setAttribute( 'position', new THREE.Float32BufferAttribute( vertices, 3 ) );
 
 				// colour, sprite, size
+				
 				parameters = [
-					[[ 1.0, 0.2, 0.5 ], sprite2, 100 ]
+					[[ 1.0, 0.2, 0.5 ], sprite2, 20 ]
 				];
 				/*
 				parameters = [
@@ -115,6 +106,7 @@
 					materials[ i ].color.setHSL( color[ 0 ], color[ 1 ], color[ 2 ], THREE.SRGBColorSpace );
 
 					const particles = new THREE.Points( geometry, materials[ i ] );
+
 					scene.add( particles );
 
 				}
