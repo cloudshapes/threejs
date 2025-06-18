@@ -14,6 +14,7 @@ let sprite_objects = [];
 const N_VERTICES = 100;
 const WRAP_BUFFER = 200;
 const MAX_Z_VALUE = 2000;
+const RANGE = 1000;
 
 
 init();
@@ -29,7 +30,7 @@ function init() {
 	};
 
 
-	// Color, sprite, size, particles/points, material, z-speed:	
+	// Color, sprite, size, particles/points, material:	
 	const spriteConfig = [
 	  { file: 'ah-1.png', color: [0.90, 0.05, 0.5], size: 200 },
 	  { file: 'ah-2.png', color: [1.0, 0.2, 0.5], size: 200 },
@@ -40,9 +41,7 @@ function init() {
 
 	sprite_objects = spriteConfig.map(cfg => {
 	  const texture = textureLoader.load(cfg.file, assignSRGB);
-	  // Assign random speed
-	  const speed = 1 + Math.random() * 10.0;
-	  return [cfg.color, texture, cfg.size, null, null, speed];
+	  return [cfg.color, texture, cfg.size, null, null];
 	});
 
 
@@ -52,28 +51,51 @@ function init() {
 		// Generate vertices:
 	  const vertices = [];
 	  for (let j = 0; j < N_VERTICES; j++) {
-	    const x = Math.random() * 2000 - 1000;
-	    const y = Math.random() * 2000 - 1000;
-	    const z = Math.random() * 2000 - 1000;
+	    const x = Math.random() * MAX_Z_VALUE - RANGE;
+	    const y = Math.random() * MAX_Z_VALUE - RANGE;
+	    const z = Math.random() * MAX_Z_VALUE - RANGE;
 	    vertices.push(x, y, z);
 	  }
 
+		const velocities = new Float32Array(N_VERTICES);
+		for (let j = 0; j < N_VERTICES; j++) {
+		  velocities[j] = 1 + Math.random() * 20; // random z speed
+		}
+
 	  // Generate geometry:
-	  const geometry = new THREE.BufferGeometry();
-	  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+		const geometry = new THREE.BufferGeometry();
+		geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+		geometry.setAttribute('zVelocity', new THREE.BufferAttribute(velocities, 1));
+
+		// Save original X and Y separately
+		const baseX = new Float32Array(N_VERTICES);
+		const baseY = new Float32Array(N_VERTICES);
+		for (let j = 0; j < N_VERTICES; j++) {
+		  baseX[j] = vertices[j * 3 + 0];
+		  baseY[j] = vertices[j * 3 + 1];
+		}
+		geometry.setAttribute('baseX', new THREE.BufferAttribute(baseX, 1));
+		geometry.setAttribute('baseY', new THREE.BufferAttribute(baseY, 1));
+
 
 	  const color = sprite_objects[i][0];
 	  const sprite = sprite_objects[i][1];
 	  const size = sprite_objects[i][2];
 
 	  // Generate materials
-	  const material = new THREE.PointsMaterial({
-	    size: size,
-	    map: sprite,
-	    blending: THREE.AdditiveBlending,
-	    depthTest: false,
-	    transparent: true
-	  });
+		const material = new THREE.PointsMaterial({
+		  size: size,
+		  sizeAttenuation: true, // 👈 this makes size respond to camera distance
+		  map: sprite,
+		  blending: THREE.AdditiveBlending,
+		  depthTest: false,
+		  transparent: true
+		});
+
+
+
+
+
 	  material.color.setHSL(color[0], color[1], color[2], THREE.SRGBColorSpace);
 		sprite_objects[i][4] = material;
 
@@ -108,26 +130,6 @@ function init() {
 	scene.add(axesHelper);
 
 
-	// Camera setup:
-	camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 10000);
-	const size = new THREE.Vector3();
-	const center = new THREE.Vector3();
-	overallBox.getSize(size);
-	overallBox.getCenter(center);
-
-	const maxDim = Math.max(size.x, size.y, size.z);
-	const fov = camera.fov * (Math.PI / 180);
-	let cameraZ = maxDim / (2 * Math.tan(fov / 2));
-	cameraZ *= 2;
-
-	// Set up before lookAt to fix orientation
-	camera.up.set(0, 1, 0);
-	camera.position.set(center.x, center.y, cameraZ);
-	camera.lookAt(center);
-	camera.updateProjectionMatrix();
-
-
-
 	// Renderer setup:
 	renderer = new THREE.WebGLRenderer();
 	renderer.setPixelRatio(window.devicePixelRatio);
@@ -135,27 +137,26 @@ function init() {
 	renderer.setAnimationLoop(animate);
 	document.body.appendChild(renderer.domElement);
 
-	
-	stats = new Stats();
-	document.body.appendChild(stats.dom);
-	
+
+	// Camera and controls setup:
+	camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 10000);
 
 	controls = new OrbitControls(camera, renderer.domElement);
 	controls.enableDamping = true;       // smooth motion
 	controls.dampingFactor = 0.05;
 	controls.enableZoom = true;          // zoom with mouse wheel
 	controls.enablePan = true;          // optional: disable panning
+	controls.enableRotate = false;
 
-	// Guarantee consistent orientation on refresh:
-	controls.target.copy(center);  // Match what camera.lookAt(center) is doing
-	controls.update();             // Required after setting target
-	controls.reset(); 
+	camera.up.set(0, 1, 0);
+	camera.position.set(0, 0, 3000);
+	camera.lookAt(0, 0, 0);
+	controls.target.set(0, 0, 0);
+	controls.update();
 
-	// Restrict to horizontal-only orbiting (no upside-down camera)
-	controls.minPolarAngle = Math.PI / 2;
-	controls.maxPolarAngle = Math.PI / 2;
-	controls.minAzimuthAngle = -Math.PI;
-	controls.maxAzimuthAngle = Math.PI;
+	
+	stats = new Stats();
+	document.body.appendChild(stats.dom);
 
 	document.body.style.touchAction = 'none';
 	window.addEventListener('resize', onWindowResize);
@@ -178,37 +179,52 @@ function animate() {
 
 function render() {
 	const time = Date.now() * 0.00005;
+	const driftScale = 0.5;
 
 	for (let i = 0; i < sprite_objects.length; i++) {
+
 		let sprite_object = sprite_objects[i];
 
+		// Adjust positions:
+	  const points = sprite_object[3];
+	  const geometry = points.geometry;
 
-		// Adjust sprite positions:
-		let p = sprite_object[3];
-		let speed = sprite_object[5];
+	  const positions = geometry.getAttribute('position');
+	  const velocities = geometry.getAttribute('zVelocity');
 
-		// Increase z position and adjust if necessary:
-		adjust_z_position(p, speed);
+	  for (let j = 0; j < positions.count; j++) {
+	    let z = positions.getZ(j);
+	    z += velocities.getX(j);
+
+	    // If the point goes beyond the camera Z, wrap it around
+			const wrapZ = camera.position.z + WRAP_BUFFER;
+			const nearLimit = camera.position.z - camera.near - 20; // 20 units before near clip
+			if (z > wrapZ || z > nearLimit) {
+			  z = camera.position.z - MAX_Z_VALUE;
+			}
+
+	    // X/Y drift using sin noise based on index and time
+	    const base = i * RANGE + j;
+			const x = geometry.getAttribute('baseX').getX(j) + Math.sin(base + time) * driftScale;
+			const y = geometry.getAttribute('baseY').getX(j) + Math.cos(base + time * 1.3) * driftScale;
+
+	    // Update all coords
+	    positions.setX(j, x);
+	    positions.setY(j, y);
+	    positions.setZ(j, z);
+
+	  }
+	  positions.needsUpdate = true;
+
 
 		// Adjust materials:
 		const color = sprite_object[ 0 ];
 		const h = ( 360 * ( color[ 0 ] + time ) % 360 ) / 360;
 		let material = sprite_object[ 4 ];
 		material.color.setHSL( h, color[ 1 ], color[ 2 ], THREE.SRGBColorSpace );
-
-	};
+	}
 
 	renderer.render( scene, camera );
-}
-
-
-function adjust_z_position(p, speed) {
-	// Adjust z position:
-	p.position.z += speed;
-
-	if (p.position.z > camera.position.z + WRAP_BUFFER) {
-		p.position.z = camera.position.z - MAX_Z_VALUE;
-	}
 }
 
 
