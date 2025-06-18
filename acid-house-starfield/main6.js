@@ -4,7 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
-let camera, scene, renderer, stats, parameters;
+let camera, scene, renderer, stats;
 let controls;
 
 let windowHalfX = window.innerWidth / 2;
@@ -12,6 +12,9 @@ let windowHalfY = window.innerHeight / 2;
 
 let sprite_objects = [];
 const N_VERTICES = 100;
+const WRAP_BUFFER = 200;
+const MAX_Z_VALUE = 2000;
+
 
 init();
 
@@ -25,7 +28,7 @@ function init() {
 		texture.colorSpace = THREE.SRGBColorSpace;
 	};
 
-	
+
 	const sprite1 = textureLoader.load('ah-1.png', assignSRGB);
 	const sprite2 = textureLoader.load('ah-2.png', assignSRGB);
 	const sprite3 = textureLoader.load('ah-3.png', assignSRGB);
@@ -169,11 +172,11 @@ function render() {
 
 
 		// Adjust sprite positions:
-		const p = sprite_object[3];
+		let p = sprite_object[3];
 		let speed = sprite_object[5];
 
-		p.position.z += speed;
-		if (p.position.z > 1000) p.position.z -= 2000;
+		// Increase z position and adjust if necessary:
+		adjust_z_position(p, speed);
 
 		// Adjust materials:
 		const color = sprite_object[ 0 ];
@@ -191,5 +194,14 @@ function random_z_speed()	{
 	return 1 + Math.random() * 10.0;
 }
 
+
+function adjust_z_position(p, speed) {
+	// Adjust z position:
+	p.position.z += speed;
+
+	if (p.position.z > camera.position.z + WRAP_BUFFER) {
+		p.position.z = camera.position.z - MAX_Z_VALUE;
+	}
+}
 
 
