@@ -108,22 +108,27 @@ function init() {
 	scene.add(axesHelper);
 
 
-	// Camera setup to frame the box
+	// Camera setup:
 	camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 10000);
-
 	const size = new THREE.Vector3();
 	const center = new THREE.Vector3();
 	overallBox.getSize(size);
 	overallBox.getCenter(center);
+
 	const maxDim = Math.max(size.x, size.y, size.z);
 	const fov = camera.fov * (Math.PI / 180);
 	let cameraZ = maxDim / (2 * Math.tan(fov / 2));
 	cameraZ *= 2;
+
+	// Set up before lookAt to fix orientation
+	camera.up.set(0, 1, 0);
 	camera.position.set(center.x, center.y, cameraZ);
 	camera.lookAt(center);
 	camera.updateProjectionMatrix();
 
 
+
+	// Renderer setup:
 	renderer = new THREE.WebGLRenderer();
 	renderer.setPixelRatio(window.devicePixelRatio);
 	renderer.setSize(window.innerWidth, window.innerHeight);
@@ -140,6 +145,17 @@ function init() {
 	controls.dampingFactor = 0.05;
 	controls.enableZoom = true;          // zoom with mouse wheel
 	controls.enablePan = true;          // optional: disable panning
+
+	// Guarantee consistent orientation on refresh:
+	controls.target.copy(center);  // Match what camera.lookAt(center) is doing
+	controls.update();             // Required after setting target
+	controls.reset(); 
+
+	// Restrict to horizontal-only orbiting (no upside-down camera)
+	controls.minPolarAngle = Math.PI / 2;
+	controls.maxPolarAngle = Math.PI / 2;
+	controls.minAzimuthAngle = -Math.PI;
+	controls.maxAzimuthAngle = Math.PI;
 
 	document.body.style.touchAction = 'none';
 	window.addEventListener('resize', onWindowResize);
