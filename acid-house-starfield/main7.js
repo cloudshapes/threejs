@@ -59,66 +59,94 @@ function init() {
 	const textureLoader = new THREE.TextureLoader();
 	// Color, sprite, size, particles/points, material:	
 	const spriteConfig = [
-	  { file: 'ah-1.png', color: [], size: null },
-	  { file: 'ah-2.png', color: [1.0, 0.2, 0.5], size: 200 },
-	  { file: 'ah-3.png', color: [0.95, 0.1, 0.5], size: 60 },
-	  { file: 'ah-4.png', color: [0.80, 0, 0.5], size: 25 },
-	  { file: 'ah-5.png', color: [0.85, 0, 0.5], size: 28 }
+	  { file: 'ah-1.png', color: [0.90, 0.05, 0.5]},
+	  { file: 'ah-2.png', color: [1.0, 0.2, 0.5]},
+	  { file: 'ah-3.png', color: [0.95, 0.1, 0.5]},
+	  { file: 'ah-4.png', color: [0.80, 0, 0.5]},
+	  { file: 'ah-5.png', color: [0.85, 0, 0.5]}
 	];
 
 	spriteConfig.forEach((cfg) => {
-		const texture = textureLoader.load(cfg.file);
-		texture.colorSpace = THREE.SRGBColorSpace;
 
-		const geometry = new THREE.BufferGeometry();
-		const positions = [];
-		const sizes = [];
-		const zVelocity = [];
+		textureLoader.load(cfg.file, (texture) => {
+			texture.colorSpace = THREE.SRGBColorSpace;
 
-		for (let i = 0; i < N_VERTICES; i++) {
-			const x = Math.random() * MAX_Z_VALUE - RANGE;
-			const y = Math.random() * MAX_Z_VALUE - RANGE;
-			const z = Math.random() * MAX_Z_VALUE - RANGE;
-			positions.push(x, y, z);
-			sizes.push(100 + Math.random() * 500); // size per vertex TODO
-			zVelocity.push((Math.random() - 0.5) * MAX_Z_VELOCITY);
-		}
+			console.log(texture.image);
 
-		geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-		geometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
-		geometry.setAttribute('zVelocity', new THREE.Float32BufferAttribute(zVelocity, 1));
 
-		const material = new THREE.ShaderMaterial({
-			uniforms: {
-				pointTexture: { value: texture },
-			},
-			vertexShader: `
-				attribute float size;
-				varying float vAlpha;
-				void main() {
-					vAlpha = 1.0 - smoothstep(0.0, 1000.0, position.z);
-					vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-					gl_PointSize = size * (300.0 / -mvPosition.z);
-					gl_Position = projectionMatrix * mvPosition;
-				}
-			`,
-			fragmentShader: `
-				uniform sampler2D pointTexture;
-				varying float vAlpha;
-				void main() {
-					vec2 flippedCoord = vec2(gl_PointCoord.x, 1.0 - gl_PointCoord.y);
-					vec4 texColor = texture2D(pointTexture, flippedCoord);
-					gl_FragColor = vec4(texColor.rgb, texColor.a * vAlpha);
-				}
-			`,
-			transparent: true,
-			depthTest: false,
-			blending: THREE.AdditiveBlending
+			const geometry = new THREE.BufferGeometry();
+			const positions = [];
+			const sizes = [];
+			const zVelocity = [];
+
+			for (let i = 0; i < N_VERTICES; i++) {
+				const x = Math.random() * MAX_Z_VALUE - RANGE;
+				const y = Math.random() * MAX_Z_VALUE - RANGE;
+				const z = Math.random() * MAX_Z_VALUE - RANGE;
+				positions.push(x, y, z);
+				sizes.push(100 + Math.random() * 500); // size per vertex TODO
+				zVelocity.push((Math.random() - 0.5) * MAX_Z_VELOCITY);
+			}
+
+			geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+			geometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
+			geometry.setAttribute('zVelocity', new THREE.Float32BufferAttribute(zVelocity, 1));
+
+
+			const color = new THREE.Color();
+			color.setHSL(cfg.color[0], cfg.color[1], cfg.color[2]);
+
+			const hsl = {};
+			color.getHSL(hsl);
+
+			const material = new THREE.ShaderMaterial({
+				uniforms: {
+					pointTexture: { value: texture },
+					baseColor: { value: new THREE.Vector3(hsl.h, hsl.s, hsl.l) },
+					hueShift: { value: 0 }
+				},
+				vertexShader: `
+					attribute float size;
+					varying float vAlpha;
+					void main() {
+						vAlpha = 1.0 - smoothstep(0.0, 1000.0, position.z);
+						vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+						gl_PointSize = size * (300.0 / -mvPosition.z);
+
+						gl_Position = projectionMatrix * mvPosition;
+					}
+				`,
+				fragmentShader: `
+					uniform sampler2D pointTexture;
+					uniform vec3 baseColor;
+					uniform float hueShift;
+					varying float vAlpha;
+
+					vec3 hsl2rgb(vec3 hsl) {
+						vec3 rgb = clamp(abs(mod(hsl.x * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+						rgb = rgb * rgb * (3.0 - 2.0 * rgb);
+						return hsl.z + hsl.y * (rgb - 0.5) * (1.0 - abs(2.0 * hsl.z - 1.0));
+					}
+
+					void main() {
+						vec2 flippedCoord = vec2(gl_PointCoord.x, 1.0 - gl_PointCoord.y);
+						vec4 texColor = texture2D(pointTexture, flippedCoord);
+						vec3 hsl = vec3(mod(baseColor.x + hueShift, 1.0), baseColor.y, baseColor.z);
+						vec3 shiftedColor = hsl2rgb(hsl);
+						gl_FragColor = vec4(shiftedColor * texColor.rgb, texColor.a * vAlpha);
+					}
+				`,
+				transparent: true,
+				depthTest: false,
+				blending: THREE.AdditiveBlending
+			});
+
+
+
+			const points = new THREE.Points(geometry, material);
+			scene.add(points);
+			sprite_objects.push(points);
 		});
-
-		const points = new THREE.Points(geometry, material);
-		scene.add(points);
-		sprite_objects.push(points);
 	});
 
 	// Add overall box helper:
@@ -179,6 +207,15 @@ function render() {
 			positions.setZ(i, z);
 		}
 		positions.needsUpdate = true;
+	}
+
+	const time = Date.now() * 0.00005;
+
+	for (let points of sprite_objects) {
+		const mat = points.material;
+		if (mat.uniforms && mat.uniforms.hueShift) {
+			mat.uniforms.hueShift.value = (time % 1);
+		}
 	}
 
 	renderer.render(scene, camera);
