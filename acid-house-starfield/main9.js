@@ -6,9 +6,7 @@ import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
 let camera, scene, renderer, stats;
 let controls;
-let audio1, audio2;
-let audioContext, listener;
-let currentAudio = null;
+let audioListener;
 
 
 let sprite_objects = [];
@@ -30,6 +28,18 @@ const settings = {
 	fogDensity: 0.00007,
 	audioTrack: 'None'
 };
+
+const audio_objects = {
+	'track 1': {
+		'url': 'https://dl.dropboxusercontent.com/scl/fi/nb665gd1nzg49un3abj6y/come-together.mp3?rlkey=kplzwbgxp2xprocmuh1y5tbp3&st=bm1mneb1&dl=0',
+		'object': null
+	},
+	'track 2': {
+		'url': 'https://dl.dropboxusercontent.com/scl/fi/jnjzzy022nytejtz3yvw3/tinzo.mp3?rlkey=tq5lihiy8hdb4mno8n0w1r1fv&st=xhl9q0mo&dl=0',
+		'object': null
+	},
+}
+
 
 init();
 
@@ -265,25 +275,20 @@ function createSprites()	{
 }
 
 function initAudio() {
-	audioContext = new (window.AudioContext || window.webkitAudioContext)();
-	listener = new THREE.AudioListener();
-	camera.add(listener);
-
+	audioListener = new THREE.AudioListener();
+	camera.add(audioListener);
 	const loader = new THREE.AudioLoader();
 
-	audio1 = new THREE.Audio(listener);
-	loader.load('https://dl.dropboxusercontent.com/scl/fi/nb665gd1nzg49un3abj6y/come-together.mp3?rlkey=kplzwbgxp2xprocmuh1y5tbp3&st=bm1mneb1&dl=0', buffer => {
-		audio1.setBuffer(buffer);
-		audio1.setLoop(true);
-		audio1.setVolume(0.5);
+	Object.entries(audio_objects).forEach(([trackName, trackData]) => {
+		const sound = new THREE.Audio(audioListener);
+		loader.load(trackData.url, buffer => {
+			sound.setBuffer(buffer);
+			sound.setLoop(true);
+			sound.setVolume(0.8);
+			audio_objects[trackName].object = sound;
+		});
 	});
 
-	audio2 = new THREE.Audio(listener);
-	loader.load('https://dl.dropboxusercontent.com/scl/fi/jnjzzy022nytejtz3yvw3/tinzo.mp3?rlkey=tq5lihiy8hdb4mno8n0w1r1fv&st=xhl9q0mo&dl=0', buffer => {
-		audio2.setBuffer(buffer);
-		audio2.setLoop(true);
-		audio2.setVolume(0.5);
-	});
 }
 
 
@@ -305,25 +310,17 @@ function getVertexCount() {
 }
 
 function playSelectedAudio(track) {
-	if (currentAudio && currentAudio.isPlaying) {
-		currentAudio.stop();
-		currentAudio = null;
+	// Stop all currently playing tracks
+	Object.values(audio_objects).forEach(obj => {
+		if (obj.object && obj.object.isPlaying) obj.object.stop();
+	});
+
+	// Play selected track if it exists
+	const selected = audio_objects[track.toLowerCase()];
+	if (selected && selected.object) {
+		selected.object.play();
 	}
 
-	switch (track) {
-		case 'Track 1':
-			if (audio1 && audio1.buffer) {
-				audio1.play();
-				currentAudio = audio1;
-			}
-			break;
-		case 'Track 2':
-			if (audio2 && audio2.buffer) {
-				audio2.play();
-				currentAudio = audio2;
-			}
-			break;
-	}
 }
 
 function render() {
