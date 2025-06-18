@@ -16,6 +16,7 @@ const WRAP_BUFFER = 200;
 const MAX_Z_VALUE = 2000;
 const RANGE = 1000;
 const MAX_Z_VELOCITY = 30;
+const MAX_SIZE = 250;
 
 init();
 
@@ -84,7 +85,7 @@ function init() {
 				const y = Math.random() * MAX_Z_VALUE - RANGE;
 				const z = Math.random() * MAX_Z_VALUE - RANGE;
 				positions.push(x, y, z);
-				sizes.push(100 + Math.random() * 500); // size per vertex TODO
+				sizes.push(100 + Math.random() * MAX_SIZE); // size per vertex
 				zVelocity.push((Math.random() - 0.5) * MAX_Z_VELOCITY);
 			}
 
@@ -100,21 +101,25 @@ function init() {
 			color.getHSL(hsl);
 
 			const material = new THREE.ShaderMaterial({
-				uniforms: {
-					pointTexture: { value: texture },
-					baseColor: { value: new THREE.Vector3(hsl.h, hsl.s, hsl.l) },
-					hueShift: { value: 0 }
-				},
+		        uniforms: {
+		          pointTexture: { value: texture },
+		          baseColor: { value: new THREE.Vector3(hsl.h, hsl.s, hsl.l) },
+		          hueShift: { value: 0 },
+		          fadeNear: { value: 800.0 },
+		          fadeFar: { value: 1600.0 }
+		        },
 				vertexShader: `
-					attribute float size;
-					varying float vAlpha;
-					void main() {
-						vAlpha = 1.0 - smoothstep(0.0, 1000.0, position.z);
-						vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-						gl_PointSize = size * (300.0 / -mvPosition.z);
+			        attribute float size;
+			        uniform float fadeNear;
+			        uniform float fadeFar;
+			        varying float vAlpha;
 
-						gl_Position = projectionMatrix * mvPosition;
-					}
+			        void main() {
+			          vAlpha = 1.0 - smoothstep(fadeNear, fadeFar, position.z);
+			          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+			          gl_PointSize = size * (300.0 / -mvPosition.z);
+			          gl_Position = projectionMatrix * mvPosition;
+			        }
 				`,
 				fragmentShader: `
 					uniform sampler2D pointTexture;
@@ -207,17 +212,19 @@ function render() {
 			positions.setZ(i, z);
 		}
 		positions.needsUpdate = true;
-	}
 
-	const time = Date.now() * 0.00005;
-
-	for (let points of sprite_objects) {
 		const mat = points.material;
-		if (mat.uniforms && mat.uniforms.hueShift) {
-			mat.uniforms.hueShift.value = (time % 1);
-		}
-	}
+	    if (mat.uniforms && mat.uniforms.hueShift) {
+	      mat.uniforms.hueShift.value = (Date.now() * 0.00005) % 1;
+	    }
 
-	renderer.render(scene, camera);
+	    // Dynamically update fadeNear/fadeFar
+	    if (mat.uniforms.fadeNear && mat.uniforms.fadeFar) {
+	      const z = camera.position.z;
+	      mat.uniforms.fadeNear.value = z - 800;
+	      mat.uniforms.fadeFar.value = z + 800;
+	    }
+	}
+		renderer.render(scene, camera);
 }
 
