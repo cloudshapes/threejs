@@ -7,32 +7,30 @@ import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 let camera, scene, renderer, stats;
 let controls;
 
-let windowHalfX = window.innerWidth / 2;
-let windowHalfY = window.innerHeight / 2;
-
 let sprite_objects = [];
-const N_VERTICES = 100;
 const WRAP_BUFFER = 200;
 const MAX_Z_VALUE = 2000;
 const RANGE = 1000;
 const MAX_Z_VELOCITY = 30;
 const MAX_SIZE = 250;
+const INITIAL_ZOOM = 2500;
+
 
 let boxHelper, axesHelper;
 let gui;
 const settings = {
-	showBoundingBox: true,
-	showAxes: true,
-	zSpeedMultiplier: 1.0,
-	numSprites: 100
+	showBoundingBox: false,
+	showAxes: false,
+	zSpeedMultiplier: 1.5,
+	numSprites: 60,
+	fogDensity: 0.00007 
 };
-
 
 init();
 
 function init() {
 	scene = new THREE.Scene();
-	scene.fog = new THREE.FogExp2(0x0000, 0.00025);
+	scene.fog = new THREE.FogExp2(0x000000, settings.fogDensity);
 
 	// Renderer setup:
 	renderer = new THREE.WebGLRenderer();
@@ -47,7 +45,7 @@ function init() {
 	// Fix the 'up' vector (Y-axis as up)
 	camera.up.set(0, 1, 0);
 	// Position the camera slightly off the Z axis
-	camera.position.set(50, 20, 1000);  // Slightly off-center - initial zoom - 1000
+	camera.position.set(50, 20, INITIAL_ZOOM);  // Slightly off-center - initial zoom - 1000
 	// Look at the origin (or any consistent target)
 	camera.lookAt(0, 0, 0);
 	// Set up OrbitControls (with rotation locked)
@@ -84,11 +82,14 @@ function init() {
 	}
 
 	boxHelper = new THREE.Box3Helper(overallBox, 0xff00ff);
+	boxHelper.visible = settings.showBoundingBox;
+
 	scene.add(boxHelper);
 
 	// Add axes helper:
 	// The X axis is red. The Y axis is green. The Z axis is blue.
 	axesHelper = new THREE.AxesHelper(10000); // size = length of each axis
+	axesHelper.visible = settings.showAxes;
 	scene.add(axesHelper);
 	
 	setupGUI(); // load UI controls	
@@ -116,6 +117,10 @@ function setupGUI() {
 		sprite_objects = [];
 		createSprites();
 	});
+
+	gui.add(settings, 'fogDensity', 0.00001, 0.002, 0.00001).name('Fog Density').onChange((value) => {
+		scene.fog.density = value;
+	});	
 }
 
 
@@ -171,7 +176,9 @@ function createSprites()	{
 		          baseColor: { value: new THREE.Vector3(hsl.h, hsl.s, hsl.l) },
 		          hueShift: { value: 0 },
 		          fadeNear: { value: 800.0 },
-		          fadeFar: { value: 1600.0 }
+		          fadeFar: { value: 1600.0 },
+				  fogColor: { value: new THREE.Color(scene.fog.color) },
+				  fogDensity: { value: scene.fog.density }		          
 		        },
 				vertexShader: `
 			        attribute float size;
@@ -191,6 +198,8 @@ function createSprites()	{
 					uniform vec3 baseColor;
 					uniform float hueShift;
 					varying float vAlpha;
+					uniform vec3 fogColor;
+					uniform float fogDensity;
 
 					vec3 hsl2rgb(vec3 hsl) {
 						vec3 rgb = clamp(abs(mod(hsl.x * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
@@ -203,7 +212,16 @@ function createSprites()	{
 						vec4 texColor = texture2D(pointTexture, flippedCoord);
 						vec3 hsl = vec3(mod(baseColor.x + hueShift, 1.0), baseColor.y, baseColor.z);
 						vec3 shiftedColor = hsl2rgb(hsl);
-						gl_FragColor = vec4(shiftedColor * texColor.rgb, texColor.a * vAlpha);
+						vec4 finalColor = vec4(shiftedColor * texColor.rgb, texColor.a * vAlpha);
+
+						// Apply exponential fog
+						float fogDepth = gl_FragCoord.z / gl_FragCoord.w;
+						float fogFactor = exp2(-fogDensity * fogDensity * fogDepth * fogDepth * 1.442695);
+						fogFactor = clamp(fogFactor, 0.0, 1.0);
+						finalColor.rgb = mix(fogColor, finalColor.rgb, fogFactor);
+
+						gl_FragColor = finalColor;
+
 					}
 				`,
 				transparent: true,
@@ -231,21 +249,16 @@ function createSprites()	{
 			  boxHelper.visible = settings.showBoundingBox;
 			  scene.add(boxHelper);
 			}
-
-
 		});
 	});
-
-
 }
 
 function onWindowResize() {
-	windowHalfX = window.innerWidth / 2;
-	windowHalfY = window.innerHeight / 2;
 	camera.aspect = window.innerWidth / window.innerHeight;
 	camera.updateProjectionMatrix();
 	renderer.setSize(window.innerWidth, window.innerHeight);
 }
+
 
 function animate() {
 	render();
@@ -274,6 +287,13 @@ function render() {
 		positions.needsUpdate = true;
 
 		const mat = points.material;
+
+		// Update fog if present
+		if (mat.uniforms.fogDensity) {
+			mat.uniforms.fogDensity.value = scene.fog.density;
+			mat.uniforms.fogColor.value.copy(scene.fog.color);
+		}
+
 	    if (mat.uniforms && mat.uniforms.hueShift) {
 	      mat.uniforms.hueShift.value = (Date.now() * 0.00005) % 1;
 	    }
