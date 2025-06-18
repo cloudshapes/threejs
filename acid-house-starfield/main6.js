@@ -29,21 +29,21 @@ function init() {
 	};
 
 
-	const sprite1 = textureLoader.load('ah-1.png', assignSRGB);
-	const sprite2 = textureLoader.load('ah-2.png', assignSRGB);
-	const sprite3 = textureLoader.load('ah-3.png', assignSRGB);
-	const sprite4 = textureLoader.load('ah-4.png', assignSRGB);
-	const sprite5 = textureLoader.load('ah-5.png', assignSRGB);
-
-
 	// Color, sprite, size, particles/points, material, z-speed:	
-	sprite_objects = [
-		[[ 1.0, 0.2, 0.5 ], sprite2, 200, null, null, null ],
-		[[ 0.95, 0.1, 0.5 ], sprite3, 60, null, null, null ],
-		[[ 0.90, 0.05, 0.5 ], sprite1, 200, null, null, null ],
-		[[ 0.85, 0, 0.5 ], sprite5, 28 ],
-		[[ 0.80, 0, 0.5 ], sprite4, 25 ]
+	const spriteConfig = [
+	  { file: 'ah-1.png', color: [0.90, 0.05, 0.5], size: 200 },
+	  { file: 'ah-2.png', color: [1.0, 0.2, 0.5], size: 200 },
+	  { file: 'ah-3.png', color: [0.95, 0.1, 0.5], size: 60 },
+	  { file: 'ah-4.png', color: [0.80, 0, 0.5], size: 25 },
+	  { file: 'ah-5.png', color: [0.85, 0, 0.5], size: 28 }
 	];
+
+	sprite_objects = spriteConfig.map(cfg => {
+	  const texture = textureLoader.load(cfg.file, assignSRGB);
+	  // Assign random speed
+	  const speed = 1 + Math.random() * 10.0;
+	  return [cfg.color, texture, cfg.size, null, null, speed];
+	});
 
 
 	// Use different geometry per sprite:
@@ -81,10 +81,6 @@ function init() {
 	  let points = new THREE.Points(geometry, material);
 	  scene.add(points);
 		sprite_objects[i][3] = points;
-
-		// Assign random speed:
-		sprite_objects[i][5] = random_z_speed();
-
 	}
 
 
@@ -187,11 +183,6 @@ function render() {
 	};
 
 	renderer.render( scene, camera );
-}
-
-
-function random_z_speed()	{
-	return 1 + Math.random() * 10.0;
 }
 
 
