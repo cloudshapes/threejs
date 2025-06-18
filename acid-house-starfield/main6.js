@@ -15,7 +15,7 @@ const N_VERTICES = 100;
 const WRAP_BUFFER = 200;
 const MAX_Z_VALUE = 2000;
 const RANGE = 1000;
-
+const MAX_Z_VELOCITY = 60;
 
 init();
 
@@ -59,7 +59,7 @@ function init() {
 
 		const velocities = new Float32Array(N_VERTICES);
 		for (let j = 0; j < N_VERTICES; j++) {
-		  velocities[j] = 1 + Math.random() * 20; // random z speed
+			velocities[j] = (Math.random() - 0.5) * MAX_Z_VELOCITY;
 		}
 
 	  // Generate geometry:
@@ -91,10 +91,6 @@ function init() {
 		  depthTest: false,
 		  transparent: true
 		});
-
-
-
-
 
 	  material.color.setHSL(color[0], color[1], color[2], THREE.SRGBColorSpace);
 		sprite_objects[i][4] = material;
@@ -140,17 +136,21 @@ function init() {
 
 	// Camera and controls setup:
 	camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 10000);
-
-	controls = new OrbitControls(camera, renderer.domElement);
-	controls.enableDamping = true;       // smooth motion
-	controls.dampingFactor = 0.05;
-	controls.enableZoom = true;          // zoom with mouse wheel
-	controls.enablePan = true;          // optional: disable panning
-	controls.enableRotate = false;
-
+	// Fix the 'up' vector (Y-axis as up)
 	camera.up.set(0, 1, 0);
-	camera.position.set(0, 0, 3000);
+	// Position the camera slightly off the Z axis
+	camera.position.set(50, 20, 3000);  // Slightly off-center
+	// Look at the origin (or any consistent target)
 	camera.lookAt(0, 0, 0);
+	// Set up OrbitControls (with rotation locked)
+	controls = new OrbitControls(camera, renderer.domElement);
+	controls.enableDamping = true;
+	controls.dampingFactor = 0.05;
+	controls.enableZoom = true;
+	controls.enablePan = true;
+	controls.enableRotate = true;  
+
+	// Lock target to center and update controls
 	controls.target.set(0, 0, 0);
 	controls.update();
 
