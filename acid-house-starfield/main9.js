@@ -7,7 +7,8 @@ import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 let camera, scene, renderer, stats;
 let controls;
 let audioListener;
-
+let audioControl;
+let playPauseController; 
 
 let sprite_objects = [];
 const WRAP_BUFFER = 200;
@@ -30,16 +31,19 @@ const settings = {
 };
 
 const audio_objects = {
-	'track 1': {
+	'Come Together (Primal Scream)': {
 		'url': 'https://dl.dropboxusercontent.com/scl/fi/nb665gd1nzg49un3abj6y/come-together.mp3?rlkey=kplzwbgxp2xprocmuh1y5tbp3&st=bm1mneb1&dl=0',
 		'object': null
 	},
-	'track 2': {
+	'Feel the Melody (Marvel Riot)': {
 		'url': 'https://dl.dropboxusercontent.com/scl/fi/jnjzzy022nytejtz3yvw3/tinzo.mp3?rlkey=tq5lihiy8hdb4mno8n0w1r1fv&st=xhl9q0mo&dl=0',
 		'object': null
 	},
+	'Pasilda (DJ Wady/CASSIMM)': {
+		'url': 'https://dl.dropboxusercontent.com/scl/fi/1hbqubhwq4h1ml6m43rme/pasilda-bit.mp3?rlkey=ajh3clgofdbjewya9z7gxfx1o&st=bt7vp6zh&dl=0',
+		'object': null
+	}
 }
-
 
 init();
 
@@ -114,6 +118,8 @@ function init() {
 
 	document.body.style.touchAction = 'none';
 	window.addEventListener('resize', onWindowResize);
+
+	playSelectedAudio('Come Together (Primal Scream)');
 }
 
 function setupGUI() {
@@ -140,11 +146,32 @@ function setupGUI() {
 		scene.fog.density = value;
 	});	
 
-	gui.add(settings, 'audioTrack', ['None', 'Track 1', 'Track 2']).name('Music').onChange(playSelectedAudio);
+	const trackNames = ['None', ...Object.keys(audio_objects)];
+	gui.add(settings, 'audioTrack', trackNames).name('Music').onChange(playSelectedAudio);
 
+	audioControl = {
+	  label: '▶ Play',
+	  toggle: toggleAudioControl
+	};
+	playPauseController = gui.add(audioControl, 'toggle').name(audioControl.label);
 }
 
+function toggleAudioControl()	{
+	const selected = audio_objects[settings.audioTrack];
+	if (!selected || !selected.object) {
+	  	audioControl.label = 'No music!';
+	}	else {
+		if (selected.object.isPlaying) {
+		  selected.object.pause();
+		  audioControl.label = '▶ Play';
+		} else {
+		  selected.object.play();
+		  audioControl.label = '⏸ Pause';
+		}
+	}
 
+	playPauseController.name(audioControl.label); 
+}
 
 function createSprites()	{
 
@@ -162,9 +189,6 @@ function createSprites()	{
 
 		textureLoader.load(cfg.file, (texture) => {
 			texture.colorSpace = THREE.SRGBColorSpace;
-
-			console.log(texture.image);
-
 
 			const geometry = new THREE.BufferGeometry();
 			const positions = [];
@@ -250,8 +274,6 @@ function createSprites()	{
 				blending: THREE.AdditiveBlending
 			});
 
-
-
 			const points = new THREE.Points(geometry, material);
 			scene.add(points);
 			sprite_objects.push(points);
@@ -281,11 +303,28 @@ function initAudio() {
 
 	Object.entries(audio_objects).forEach(([trackName, trackData]) => {
 		const sound = new THREE.Audio(audioListener);
+
 		loader.load(trackData.url, buffer => {
 			sound.setBuffer(buffer);
 			sound.setLoop(true);
 			sound.setVolume(0.8);
+
+			// On finish, reset dropdown
+			sound.onEnded = () => {
+				settings.audioTrack = 'None';
+				gui.updateDisplay();
+			};
+
 			audio_objects[trackName].object = sound;
+		}, 
+		undefined, 
+		// onError
+		() => {
+			console.warn(`Failed to load audio for: ${trackName}`);
+			if (settings.audioTrack === trackName) {
+				settings.audioTrack = 'None';
+				gui.updateDisplay();
+			}
 		});
 	});
 
@@ -300,6 +339,13 @@ function onWindowResize() {
 
 
 function animate() {
+	if (settings.audioTrack !== 'None') {
+		const current = audio_objects[settings.audioTrack];
+		if (current && current.object) {
+			audioControl.isPlaying = current.object.isPlaying;
+		}
+	}
+
 	render();
 	controls.update();	
 	stats.update();
@@ -315,13 +361,20 @@ function playSelectedAudio(track) {
 		if (obj.object && obj.object.isPlaying) obj.object.stop();
 	});
 
-	// Play selected track if it exists
-	const selected = audio_objects[track.toLowerCase()];
-	if (selected && selected.object) {
-		selected.object.play();
+	if (track === 'None') {
+		audioControl.isPlaying = false;
+	}	else {
+		const selected = audio_objects[track];
+		if (selected && selected.object) {
+			selected.object.play();
+			audioControl.isPlaying = true;
+		} else {
+			audioControl.isPlaying = false;
+		}
 	}
-
+	toggleAudioControl();
 }
+
 
 function render() {
 	for (let points of sprite_objects) {
