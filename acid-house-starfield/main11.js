@@ -329,18 +329,21 @@ function createSprites()	{
 		          fadeNear: { value: 800.0 },
 		          fadeFar: { value: 1600.0 },
 				  fogColor: { value: new THREE.Color(scene.fog.color) },
-				  fogDensity: { value: scene.fog.density }		          
+				  fogDensity: { value: scene.fog.density },
+				  scaleFactor: { value: 1.0 } 
 		        },
 				vertexShader: `
 			        attribute float size;
 			        uniform float fadeNear;
 			        uniform float fadeFar;
+			        uniform float scaleFactor;
 			        varying float vAlpha;
+
 
 			        void main() {
 			          vAlpha = 1.0 - smoothstep(fadeNear, fadeFar, position.z);
 			          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-			          gl_PointSize = size * (300.0 / -mvPosition.z);
+					  gl_PointSize = size * scaleFactor * (300.0 / -mvPosition.z);
 			          gl_Position = projectionMatrix * mvPosition;
 			        }
 				`,
@@ -594,7 +597,9 @@ function render() {
 			// Pulsating sprites:
 			// Bass = pulsate
 			for (let p of bassGroup) {
-				p.scale.setScalar(1 + bandData.bass * 0.9);
+				if (p.material?.uniforms?.scaleFactor) {
+					p.material.uniforms.scaleFactor.value = 1.0 + Math.pow(bandData.bass, 1.5) * 2.0;
+				}
 			}
 
 			// Mids = zoom forward/back slightly
@@ -605,7 +610,9 @@ function render() {
 			// Highs = hue shift
 			for (let p of highsGroup) {
 				if (p.material?.uniforms?.hueShift) {
-					p.material.uniforms.hueShift.value += bandData.highs * 0.01;
+					const t = Date.now() * 0.01;
+					p.material.uniforms.hueShift.value += (bandData.highs * 1.0) + Math.sin(t) * 0.05;
+					p.material.uniforms.hueShift.value = p.material.uniforms.hueShift.value % 1.0;
 				}
 			}
 		}
