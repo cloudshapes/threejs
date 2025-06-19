@@ -24,6 +24,8 @@ const NO_MUSIC_LABEL = 'No music!';
 const PLAY_LABEL = '▶ Play';
 const PAUSE_LABEL = '⏸ Pause';
 
+const LOADING_MESSAGE = 'Loading audio 🔇 .... standby ⏳!';
+const READY_MESSAGE = 'Ready 💪! Click to enter! 🎉';
 
 
 let boxHelper, axesHelper;
@@ -131,7 +133,7 @@ function init() {
 
 
 function setupReadyToStart()	{
-	initialOverlay.innerText = 'Ready – click to start';
+	initialOverlay.innerText = READY_MESSAGE;
 
 	const resume = () => {
 		const context = THREE.AudioContext.getContext();
@@ -212,7 +214,7 @@ function createInitialOverlay()	{
 	initialOverlay.style.alignItems = 'center';
 	initialOverlay.style.fontSize = '2em';
 	initialOverlay.style.zIndex = '1000';
-	initialOverlay.innerText = 'Loading...';
+	initialOverlay.innerText = LOADING_MESSAGE;
 	document.body.appendChild(initialOverlay);
 }
 
@@ -370,7 +372,7 @@ function initAudio() {
 	Object.entries(audio_objects).forEach(([trackName, trackData]) => {
 		const sound = new THREE.Audio(audioListener);
 
-		const promise = new Promise((resolve, reject) => {
+		const promise = new Promise((resolve) => {
 			loader.load(
 				trackData.url,
 				buffer => {
