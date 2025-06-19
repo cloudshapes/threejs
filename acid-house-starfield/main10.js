@@ -30,6 +30,15 @@ const READY_MESSAGE = 'Ready 💪! Click to enter! 🎉';
 
 let boxHelper, axesHelper;
 let gui;
+let visualizerCanvas, visualizerCtx;
+
+const BAND_COLORS = {
+	bass: '#ff0055',   // reddish-pink
+	mids: '#00ccff',   // cyan
+	highs: '#ccff66'   // lime-yellow
+};
+
+
 const settings = {
 	showBoundingBox: false,
 	showAxes: false,
@@ -38,6 +47,9 @@ const settings = {
 	fogDensity: 0.00007,
 	audioTrack: 'None'
 };
+
+let bassGroup = [], midsGroup = [], highsGroup = [];
+
 
 const audio_objects = {
 	'Come Together (Primal Scream)': {
@@ -61,6 +73,7 @@ init();
 
 function init() {
 	createInitialOverlay();
+	createAudioVisualizer();
 
 	scene = new THREE.Scene();
 	scene.fog = new THREE.FogExp2(0x000000, settings.fogDensity);
@@ -183,6 +196,9 @@ function setupGUI() {
 		// Clear and regenerate
 		sprite_objects.forEach(p => scene.remove(p));
 		sprite_objects = [];
+		bassGroup = [];
+		midsGroup = [];
+		highsGroup = [];
 		createSprites();
 	});
 
@@ -219,6 +235,21 @@ function createInitialOverlay()	{
 	initialOverlay.style.zIndex = '1000';
 	initialOverlay.innerText = LOADING_MESSAGE;
 	document.body.appendChild(initialOverlay);
+}
+
+function createAudioVisualizer() {
+	visualizerCanvas = document.createElement('canvas');
+	visualizerCanvas.style.position = 'fixed';
+	visualizerCanvas.style.bottom = '0';
+	visualizerCanvas.style.left = '0';
+	visualizerCanvas.style.width = '50%';
+	visualizerCanvas.style.height = '100px';
+	visualizerCanvas.style.zIndex = '500';
+	visualizerCanvas.style.pointerEvents = 'none';
+	visualizerCanvas.style.background = 'transparent';
+	document.body.appendChild(visualizerCanvas);
+
+	visualizerCtx = visualizerCanvas.getContext('2d');
 }
 
 function toggleAudioControl()	{
@@ -342,6 +373,21 @@ function createSprites()	{
 			});
 
 			const points = new THREE.Points(geometry, material);
+
+			// Decide which band this sprite responds to (rotate between bands)
+			const index = sprite_objects.length % 3;
+			if (index === 0) {
+				points.userData.band = 'bass';
+				bassGroup.push(points);
+			} else if (index === 1) {
+				points.userData.band = 'mids';
+				midsGroup.push(points);
+			} else {
+				points.userData.band = 'highs';
+				highsGroup.push(points);
+			}
+
+
 			scene.add(points);
 			sprite_objects.push(points);
 
@@ -402,6 +448,11 @@ function initAudio() {
 }
 
 function onWindowResize() {
+	if (visualizerCanvas) {
+		visualizerCanvas.width = window.innerWidth;
+		visualizerCanvas.height = 100;
+	}
+
 	camera.aspect = window.innerWidth / window.innerHeight;
 	camera.updateProjectionMatrix();
 	renderer.setSize(window.innerWidth, window.innerHeight);
@@ -466,29 +517,87 @@ function playSelectedAudio(track) {
 	}
 }
 
-function render() {
 
-	let normalised  = null;
+function getFrequencyBands(analyser) {
+	if (!analyser) return null;
 
-	const selected = audio_objects[settings.audioTrack];
-	if (selected && selected.object) {
-		if (selected.object.isPlaying)	{
-			const analyser = selected.analyser;
-			if (analyser) {
-				const freq = analyser.getAverageFrequency(); // 0–255
-				normalised = freq / 255;
-			}
+	const data = analyser.getFrequencyData(); // Uint8Array of length = fftSize / 2
+	const bass = average_fn(data.slice(0, 20));       // low
+	const mids = average_fn(data.slice(20, 80));      // mid
+	const highs = average_fn(data.slice(80));         // high
+
+	return {
+		bass: bass / 255,
+		mids: mids / 255,
+		highs: highs / 255
+	};
+}
+
+function average_fn(arr) {
+	let sum = 0;
+	for (let i = 0; i < arr.length; i++) sum += arr[i];
+	return arr.length > 0 ? sum / arr.length : 0;
+}
+
+
+function renderVisualiser(current)	{
+	if (visualizerCtx && current?.analyser) {
+		const data = current.analyser.getFrequencyData();
+		const width = visualizerCanvas.width;
+		const height = visualizerCanvas.height;
+		const barWidth = width / data.length;
+
+		visualizerCtx.clearRect(0, 0, width, height);
+
+		for (let i = 0; i < data.length; i++) {
+			const value = data[i];
+			const barHeight = value / 255 * height;
+
+			let color;
+			if (i < 20) color = BAND_COLORS.bass;
+			else if (i < 40) color = BAND_COLORS.mids;
+			else color = BAND_COLORS.highs;
+
+			visualizerCtx.fillStyle = color;
+			visualizerCtx.fillRect(i * barWidth, height - barHeight, barWidth * 0.8, barHeight);
 		}
 	}
+
+
+}
+
+function render() {
+
+	let bandData = null;
+	const current = audio_objects[settings.audioTrack];
+	if (current && current.object && current.object?.isPlaying && current.analyser) {
+		bandData = getFrequencyBands(current.analyser);
+	}
+
 
 	for (let points of sprite_objects) {
 		const positions = points.geometry.getAttribute('position');
 		const velocities = points.geometry.getAttribute('zVelocity');
 
 		// Adjust with the music:
-		if (normalised != null)	{
-			points.scale.setScalar(1 + normalised * 0.2); 
-			// scene.fog.density = settings.fogDensity + normalised * 0.0001;
+		if (bandData) {
+			// Pulsating sprites:
+			// Bass = pulsate
+			for (let p of bassGroup) {
+				p.scale.setScalar(1 + bandData.bass * 0.6);
+			}
+
+			// Mids = zoom forward/back slightly
+			for (let p of midsGroup) {
+				p.position.z += Math.sin(Date.now() * 0.005) * bandData.mids * 2;
+			}
+
+			// Highs = hue shift
+			for (let p of highsGroup) {
+				if (p.material?.uniforms?.hueShift) {
+					p.material.uniforms.hueShift.value += bandData.highs * 0.01;
+				}
+			}
 		}
 
 		for (let i = 0; i < positions.count; i++) {
@@ -521,24 +630,11 @@ function render() {
 	      mat.uniforms.fadeFar.value = z + 800;
 	    }
 	}
+
+	renderVisualiser(current);
 	renderer.render(scene, camera);
 }
 
-/*
-const analyser = audio_objects['track 1'].analyser;
-if (analyser) {
-	const freq = analyser.getAverageFrequency(); // 0–255
-	const normalized = freq / 255;
-
-	// Example: pulse scale
-	for (let points of sprite_objects) {
-		points.scale.setScalar(1 + normalized * 0.5);  // scale up to 1.5x
-	}
-
-	// Optional: fog density modulated by music
-	scene.fog.density = settings.fogDensity + normalized * 0.0001;
-}
-*/
 
 
 
