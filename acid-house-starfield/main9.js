@@ -8,7 +8,9 @@ let camera, scene, renderer, stats;
 let controls;
 let audioListener;
 let audioControl;
+let audioTrackController;
 let playPauseController; 
+let initialOverlay;
 
 let sprite_objects = [];
 const WRAP_BUFFER = 200;
@@ -17,6 +19,11 @@ const RANGE = 1000;
 const MAX_Z_VELOCITY = 30;
 const MAX_SIZE = 250;
 const INITIAL_ZOOM = 2500;
+
+const NO_MUSIC_LABEL = 'No music!';
+const PLAY_LABEL = '▶ Play';
+const PAUSE_LABEL = '⏸ Pause';
+
 
 
 let boxHelper, axesHelper;
@@ -48,6 +55,8 @@ const audio_objects = {
 init();
 
 function init() {
+	createInitialOverlay();
+
 	scene = new THREE.Scene();
 	scene.fog = new THREE.FogExp2(0x000000, settings.fogDensity);
 
@@ -86,9 +95,6 @@ function init() {
 	// Create sprites:
 	createSprites();
 
-	// Init audio:
-	initAudio();	
-
 	// Add overall box helper:
 	const overallBox = new THREE.Box3();
 
@@ -119,8 +125,41 @@ function init() {
 	document.body.style.touchAction = 'none';
 	window.addEventListener('resize', onWindowResize);
 
-	playSelectedAudio('Come Together (Primal Scream)');
+	// Init audio - play default track:
+	initAudio().then(setupReadyToStart);
 }
+
+
+function setupReadyToStart()	{
+	initialOverlay.innerText = 'Ready – click to start';
+
+	const resume = () => {
+		const context = THREE.AudioContext.getContext();
+		if (context.state === 'suspended') {
+			context.resume();
+		}
+
+		// Start default track
+		playSelectedAudio('Come Together (Primal Scream)');
+
+		// Remove overlay
+		initialOverlay.style.transition = 'opacity 1s';
+		initialOverlay.style.opacity = '0';
+		setTimeout(() => initialOverlay.remove(), 1000);
+
+		document.removeEventListener('click', resume);
+		document.removeEventListener('keydown', resume);
+	};
+
+	document.addEventListener('click', resume);
+	document.addEventListener('keydown', resume);
+}
+
+
+
+
+
+
 
 function setupGUI() {
 	gui = new GUI();
@@ -147,30 +186,54 @@ function setupGUI() {
 	});	
 
 	const trackNames = ['None', ...Object.keys(audio_objects)];
-	gui.add(settings, 'audioTrack', trackNames).name('Music').onChange(playSelectedAudio);
+	audioTrackController = gui.add(settings, 'audioTrack', trackNames).name('Music').onChange(playSelectedAudio);
 
 	audioControl = {
-	  label: '▶ Play',
+	  label: NO_MUSIC_LABEL,
 	  toggle: toggleAudioControl
 	};
 	playPauseController = gui.add(audioControl, 'toggle').name(audioControl.label);
 }
 
+function createInitialOverlay()	{
+	// Create and style the overlay
+	initialOverlay = document.createElement('div');
+	initialOverlay.id = 'audioOverlay';
+	initialOverlay.style.position = 'fixed';
+	initialOverlay.style.top = '0';
+	initialOverlay.style.left = '0';
+	initialOverlay.style.width = '100vw';
+	initialOverlay.style.height = '100vh';
+	initialOverlay.style.background = 'rgba(0, 0, 0, 0.85)';
+	initialOverlay.style.color = '#fff';
+	initialOverlay.style.display = 'flex';
+	initialOverlay.style.flexDirection = 'column';
+	initialOverlay.style.justifyContent = 'center';
+	initialOverlay.style.alignItems = 'center';
+	initialOverlay.style.fontSize = '2em';
+	initialOverlay.style.zIndex = '1000';
+	initialOverlay.innerText = 'Loading...';
+	document.body.appendChild(initialOverlay);
+}
+
+
 function toggleAudioControl()	{
 	const selected = audio_objects[settings.audioTrack];
 	if (!selected || !selected.object) {
-	  	audioControl.label = 'No music!';
+	  	audioControl.label = NO_MUSIC_LABEL;
 	}	else {
 		if (selected.object.isPlaying) {
 		  selected.object.pause();
-		  audioControl.label = '▶ Play';
+		  audioControl.label = PLAY_LABEL;
 		} else {
 		  selected.object.play();
-		  audioControl.label = '⏸ Pause';
+		  audioControl.label = PAUSE_LABEL;
 		}
 	}
+	if (playPauseController) {
+		playPauseController.name(audioControl.label);
+	}
 
-	playPauseController.name(audioControl.label); 
 }
 
 function createSprites()	{
@@ -296,40 +359,41 @@ function createSprites()	{
 	});
 }
 
+
 function initAudio() {
 	audioListener = new THREE.AudioListener();
 	camera.add(audioListener);
+
 	const loader = new THREE.AudioLoader();
+	const loadPromises = [];
 
 	Object.entries(audio_objects).forEach(([trackName, trackData]) => {
 		const sound = new THREE.Audio(audioListener);
 
-		loader.load(trackData.url, buffer => {
-			sound.setBuffer(buffer);
-			sound.setLoop(true);
-			sound.setVolume(0.8);
-
-			// On finish, reset dropdown
-			sound.onEnded = () => {
-				settings.audioTrack = 'None';
-				gui.updateDisplay();
-			};
-
-			audio_objects[trackName].object = sound;
-		}, 
-		undefined, 
-		// onError
-		() => {
-			console.warn(`Failed to load audio for: ${trackName}`);
-			if (settings.audioTrack === trackName) {
-				settings.audioTrack = 'None';
-				gui.updateDisplay();
-			}
+		const promise = new Promise((resolve, reject) => {
+			loader.load(
+				trackData.url,
+				buffer => {
+					sound.setBuffer(buffer);
+					sound.setLoop(true);
+					sound.setVolume(0.8);
+					audio_objects[trackName].object = sound;
+					resolve();
+				},
+				undefined,
+				err => {
+					console.warn(`Failed to load audio for: ${trackName}`, err);
+					resolve(); // resolve anyway to continue
+				}
+			);
 		});
+
+		loadPromises.push(promise);
 	});
 
+	// Return a promise that resolves when all tracks are ready
+	return Promise.all(loadPromises);
 }
-
 
 function onWindowResize() {
 	camera.aspect = window.innerWidth / window.innerHeight;
@@ -339,16 +403,27 @@ function onWindowResize() {
 
 
 function animate() {
-	if (settings.audioTrack !== 'None') {
-		const current = audio_objects[settings.audioTrack];
-		if (current && current.object) {
-			audioControl.isPlaying = current.object.isPlaying;
-		}
-	}
-
+	checkAudioLabels();
 	render();
 	controls.update();	
 	stats.update();
+}
+
+function checkAudioLabels()	{
+	if (settings.audioTrack !== 'None') {
+		const current = audio_objects[settings.audioTrack];
+		if (current && current.object) {
+			const isNowPlaying = current.object.isPlaying;
+			const shouldBeLabel = isNowPlaying ? PAUSE_LABEL : PLAY_LABEL;
+
+			if (audioControl.label !== shouldBeLabel) {
+				audioControl.label = shouldBeLabel;
+				if (playPauseController) {
+					playPauseController.name(audioControl.label);
+				}
+			}
+		}
+	}
 }
 
 function getVertexCount() {
@@ -358,22 +433,36 @@ function getVertexCount() {
 function playSelectedAudio(track) {
 	// Stop all currently playing tracks
 	Object.values(audio_objects).forEach(obj => {
-		if (obj.object && obj.object.isPlaying) obj.object.stop();
+		if (obj.object && obj.object.isPlaying) {
+			obj.object.stop();
+		}
 	});
+
+	settings.audioTrack = track;
+	if (audioTrackController) {
+	  audioTrackController.updateDisplay();
+	}
 
 	if (track === 'None') {
 		audioControl.isPlaying = false;
-	}	else {
+		audioControl.label = NO_MUSIC_LABEL;
+	} else {
 		const selected = audio_objects[track];
 		if (selected && selected.object) {
 			selected.object.play();
 			audioControl.isPlaying = true;
+			audioControl.label = PAUSE_LABEL;
 		} else {
 			audioControl.isPlaying = false;
+			audioControl.label = NO_MUSIC_LABEL;
 		}
 	}
-	toggleAudioControl();
+
+	if (playPauseController) {
+		playPauseController.name(audioControl.label);
+	}
 }
+
 
 
 function render() {
