@@ -45,7 +45,8 @@ const settings = {
 	zSpeedMultiplier: 1.5,
 	numSprites: 60,
 	fogDensity: 0.00007,
-	audioTrack: 'None'
+	audioTrack: 'None',
+	showVisualizer: false,
 };
 
 let bassGroup = [], midsGroup = [], highsGroup = [];
@@ -206,6 +207,12 @@ function setupGUI() {
 		scene.fog.density = value;
 	});	
 
+	gui.add(settings, 'showVisualizer').name('Show Visualizer').onChange((val) => {
+		if (visualizerCanvas) {
+			visualizerCanvas.style.display = val ? 'block' : 'none';
+		}
+	});
+
 	const trackNames = ['None', ...Object.keys(audio_objects)];
 	audioTrackController = gui.add(settings, 'audioTrack', trackNames).name('Music').onChange(playSelectedAudio);
 
@@ -247,6 +254,7 @@ function createAudioVisualizer() {
 	visualizerCanvas.style.zIndex = '500';
 	visualizerCanvas.style.pointerEvents = 'none';
 	visualizerCanvas.style.background = 'transparent';
+	visualizerCanvas.style.display = settings.showVisualizer ? 'block' : 'none'; 
 	document.body.appendChild(visualizerCanvas);
 
 	visualizerCtx = visualizerCanvas.getContext('2d');
