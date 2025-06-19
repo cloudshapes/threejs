@@ -383,18 +383,20 @@ function createSprites()	{
 			const points = new THREE.Points(geometry, material);
 
 			// Decide which band this sprite responds to (rotate between bands)
-			const index = sprite_objects.length % 3;
-			if (index === 0) {
+			const bands = ['bass', 'mids', 'highs'];
+			const randomBand = bands[Math.floor(Math.random() * bands.length)];
+			points.userData.band = randomBand;
+
+			if (randomBand === 'bass') {
 				points.userData.band = 'bass';
 				bassGroup.push(points);
-			} else if (index === 1) {
+			} else if (randomBand === 'mids') {
 				points.userData.band = 'mids';
 				midsGroup.push(points);
 			} else {
 				points.userData.band = 'highs';
 				highsGroup.push(points);
 			}
-
 
 			scene.add(points);
 			sprite_objects.push(points);
@@ -597,7 +599,7 @@ function render() {
 
 			// Mids = zoom forward/back slightly
 			for (let p of midsGroup) {
-				p.position.z += Math.sin(Date.now() * 0.015) * bandData.mids * 6;
+				p.position.z += Math.sin(Date.now() * 0.015) * bandData.mids * 2;
 			}
 
 			// Highs = hue shift
