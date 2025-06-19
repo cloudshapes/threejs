@@ -42,15 +42,18 @@ const settings = {
 const audio_objects = {
 	'Come Together (Primal Scream)': {
 		'url': 'https://dl.dropboxusercontent.com/scl/fi/nb665gd1nzg49un3abj6y/come-together.mp3?rlkey=kplzwbgxp2xprocmuh1y5tbp3&st=bm1mneb1&dl=0',
-		'object': null
+		'object': null,
+		'analyser': null
 	},
 	'Feel the Melody (Marvel Riot)': {
 		'url': 'https://dl.dropboxusercontent.com/scl/fi/jnjzzy022nytejtz3yvw3/tinzo.mp3?rlkey=tq5lihiy8hdb4mno8n0w1r1fv&st=xhl9q0mo&dl=0',
-		'object': null
+		'object': null,
+		'analyser': null
 	},
 	'Pasilda (DJ Wady/CASSIMM)': {
 		'url': 'https://dl.dropboxusercontent.com/scl/fi/1hbqubhwq4h1ml6m43rme/pasilda-bit.mp3?rlkey=ajh3clgofdbjewya9z7gxfx1o&st=bt7vp6zh&dl=0',
-		'object': null
+		'object': null,
+		'analyser': null
 	}
 }
 
@@ -217,7 +220,6 @@ function createInitialOverlay()	{
 	initialOverlay.innerText = LOADING_MESSAGE;
 	document.body.appendChild(initialOverlay);
 }
-
 
 function toggleAudioControl()	{
 	const selected = audio_objects[settings.audioTrack];
@@ -388,6 +390,8 @@ function initAudio() {
 					resolve(); // resolve anyway to continue
 				}
 			);
+			const analyser = new THREE.AudioAnalyser(sound, 128);
+			audio_objects[trackName].analyser = analyser;
 		});
 
 		loadPromises.push(promise);
@@ -446,16 +450,13 @@ function playSelectedAudio(track) {
 	}
 
 	if (track === 'None') {
-		audioControl.isPlaying = false;
 		audioControl.label = NO_MUSIC_LABEL;
 	} else {
 		const selected = audio_objects[track];
 		if (selected && selected.object) {
 			selected.object.play();
-			audioControl.isPlaying = true;
 			audioControl.label = PAUSE_LABEL;
 		} else {
-			audioControl.isPlaying = false;
 			audioControl.label = NO_MUSIC_LABEL;
 		}
 	}
@@ -465,12 +466,30 @@ function playSelectedAudio(track) {
 	}
 }
 
-
-
 function render() {
+
+	let normalised  = null;
+
+	const selected = audio_objects[settings.audioTrack];
+	if (selected && selected.object) {
+		if (selected.object.isPlaying)	{
+			const analyser = selected.analyser;
+			if (analyser) {
+				const freq = analyser.getAverageFrequency(); // 0–255
+				normalised = freq / 255;
+			}
+		}
+	}
+
 	for (let points of sprite_objects) {
 		const positions = points.geometry.getAttribute('position');
 		const velocities = points.geometry.getAttribute('zVelocity');
+
+		// Adjust with the music:
+		if (normalised != null)	{
+			points.scale.setScalar(1 + normalised * 0.2); 
+			// scene.fog.density = settings.fogDensity + normalised * 0.0001;
+		}
 
 		for (let i = 0; i < positions.count; i++) {
 			let z = positions.getZ(i);
@@ -502,6 +521,24 @@ function render() {
 	      mat.uniforms.fadeFar.value = z + 800;
 	    }
 	}
-		renderer.render(scene, camera);
+	renderer.render(scene, camera);
 }
+
+/*
+const analyser = audio_objects['track 1'].analyser;
+if (analyser) {
+	const freq = analyser.getAverageFrequency(); // 0–255
+	const normalized = freq / 255;
+
+	// Example: pulse scale
+	for (let points of sprite_objects) {
+		points.scale.setScalar(1 + normalized * 0.5);  // scale up to 1.5x
+	}
+
+	// Optional: fog density modulated by music
+	scene.fog.density = settings.fogDensity + normalized * 0.0001;
+}
+*/
+
+
 
