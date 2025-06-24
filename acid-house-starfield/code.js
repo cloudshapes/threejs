@@ -32,6 +32,18 @@ let boxHelper, axesHelper;
 let gui;
 let visualizerCanvas, visualizerCtx;
 
+
+const FFT_SIZE = 512;  // Fast Fourier Transform Size - The number of samples the FFT processes in one chunk.
+const SAMPLE_RATE = 44100; // default, can be dynamic if needed
+
+// Frequency range, space for binset range:
+const FREQUENCY_RANGES = {
+	bass: { freq: [0, 150], bins: [] },
+	mids: { freq: [151, 2000], bins: [] },
+	highs: { freq: [2001, 160000], bins: [] }
+};
+
+
 const BAND_COLORS = {
 	bass: '#ff0055',   // reddish-pink
 	mids: '#00ccff',   // cyan
@@ -176,10 +188,6 @@ function setupReadyToStart()	{
 
 
 
-
-
-
-
 function setupGUI() {
 	gui = new GUI();
 
@@ -247,8 +255,8 @@ function createInitialOverlay()	{
 function createAudioVisualizer() {
 	visualizerCanvas = document.createElement('canvas');
 	visualizerCanvas.style.position = 'fixed';
-	visualizerCanvas.style.bottom = '0';
-	visualizerCanvas.style.left = '0';
+	visualizerCanvas.style.bottom = '0px';
+	visualizerCanvas.style.left = '10px';
 	visualizerCanvas.style.width = '50%';
 	visualizerCanvas.style.height = '100px';
 	visualizerCanvas.style.zIndex = '500';
@@ -282,7 +290,7 @@ function toggleAudioControl()	{
 function createSprites()	{
 
 	const textureLoader = new THREE.TextureLoader();
-	// Color, sprite, size, particles/points, material:	
+	
 	const spriteConfig = [
 	  { file: 'ah-1.png', color: [0.90, 0.05, 0.5]},
 	  { file: 'ah-2.png', color: [1.0, 0.2, 0.5]},
@@ -389,6 +397,8 @@ function createSprites()	{
 			const bands = ['bass', 'mids', 'highs'];
 			const randomBand = bands[Math.floor(Math.random() * bands.length)];
 			points.userData.band = randomBand;
+			// Random oscillation:
+			points.userData.phase = Math.random() * Math.PI * 2;
 
 			if (randomBand === 'bass') {
 				points.userData.band = 'bass';
@@ -423,6 +433,17 @@ function createSprites()	{
 }
 
 
+
+function initializeFrequencyBins()	{
+	// Precompute frequency bins once
+	for (const { freq, bins } of Object.values(FREQUENCY_RANGES)) {
+		const [startBin, endBin] = getFrequencyBinRange(freq[0], freq[1]);
+		bins.length = 0;
+		bins.push(startBin, endBin);
+	}
+}
+
+
 function initAudio() {
 	audioListener = new THREE.AudioListener();
 	camera.add(audioListener);
@@ -430,6 +451,12 @@ function initAudio() {
 	const loader = new THREE.AudioLoader();
 	const loadPromises = [];
 
+
+	// Initialise frequency bins:
+	initializeFrequencyBins();
+
+
+	// Load tracks:
 	Object.entries(audio_objects).forEach(([trackName, trackData]) => {
 		const sound = new THREE.Audio(audioListener);
 
@@ -449,7 +476,7 @@ function initAudio() {
 					resolve(); // resolve anyway to continue
 				}
 			);
-			const analyser = new THREE.AudioAnalyser(sound, 128);
+			const analyser = new THREE.AudioAnalyser(sound, FFT_SIZE);
 			audio_objects[trackName].analyser = analyser;
 		});
 
@@ -531,20 +558,40 @@ function playSelectedAudio(track) {
 }
 
 
+function getFrequencyDataWrapper(analyser)	{
+	// From: https://developer.mozilla.org/en-US/docs/Web/API/AnalyserNode/getByteFrequencyData
+	/*
+		The frequency data is composed of integers on a scale from 0 to 255.
+		Each item in the array represents the decibel value for a specific frequency.
+		The frequencies are spread linearly from 0 to 1/2 of the sample rate.
+		For example, for 48000 sample rate, the last item of the array will represent the decibel value for 24000 Hz.
+	*/
+	return analyser.getFrequencyData(); // Uint8Array
+}
+
 function getFrequencyBands(analyser) {
 	if (!analyser) return null;
 
-	const data = analyser.getFrequencyData(); // Uint8Array of length = fftSize / 2
-	const bass = average_fn(data.slice(0, 20));       // low
-	const mids = average_fn(data.slice(20, 80));      // mid
-	const highs = average_fn(data.slice(80));         // high
+	const data = getFrequencyDataWrapper(analyser); 
 
-	return {
-		bass: bass / 255,
-		mids: mids / 255,
-		highs: highs / 255
-	};
+	const bands = {};
+
+	for (const [name, { bins }] of Object.entries(FREQUENCY_RANGES)) {
+		const [startBin, endBin] = bins;
+		const range = data.slice(startBin, endBin);
+
+		/*
+		// Optional debug
+		if (name === 'bass') {
+			console.log(`${name}: [${startBin}, ${endBin}) → ${range}`);
+		}
+		*/
+		bands[name] = average_fn(range) / 255;
+	}
+	return bands;
 }
+
+
 
 function average_fn(arr) {
 	let sum = 0;
@@ -553,9 +600,19 @@ function average_fn(arr) {
 }
 
 
-function renderVisualiser(current)	{
+function getFrequencyBinRange(minFreq, maxFreq, fftSize = FFT_SIZE, sampleRate = SAMPLE_RATE) {
+	const nyquist = sampleRate / 2; // Nyquist Frequency - It’s the highest frequency that can be accurately represented when sampling audio.
+	const binWidth = nyquist / (fftSize / 2);
+
+	const startBin = Math.ceil(minFreq / binWidth);
+	const endBin = Math.floor(maxFreq / binWidth);  // inclusive
+	return [startBin, endBin + 1];  // +1 because `slice()` end is exclusive
+}
+
+
+function renderVisualiser(current) {
 	if (visualizerCtx && current?.analyser) {
-		const data = current.analyser.getFrequencyData();
+		const data = getFrequencyDataWrapper(current.analyser);
 		const width = visualizerCanvas.width;
 		const height = visualizerCanvas.height;
 		const barWidth = width / data.length;
@@ -564,20 +621,24 @@ function renderVisualiser(current)	{
 
 		for (let i = 0; i < data.length; i++) {
 			const value = data[i];
-			const barHeight = value / 255 * height;
+			const barHeight = (value / 255) * height;
 
-			let color;
-			if (i < 20) color = BAND_COLORS.bass;
-			else if (i < 40) color = BAND_COLORS.mids;
-			else color = BAND_COLORS.highs;
+			let color = '#444';
+
+			for (const [band, { bins }] of Object.entries(FREQUENCY_RANGES)) {
+				const [start, end] = bins;
+				if (i >= start && i < end) {
+					color = BAND_COLORS[band];
+					break;
+				}
+			}
 
 			visualizerCtx.fillStyle = color;
 			visualizerCtx.fillRect(i * barWidth, height - barHeight, barWidth * 0.8, barHeight);
 		}
 	}
-
-
 }
+
 
 function render() {
 
@@ -598,16 +659,27 @@ function render() {
 			// Bass = pulsate
 			for (let p of bassGroup) {
 				if (p.material?.uniforms?.scaleFactor) {
-					p.material.uniforms.scaleFactor.value = 1.0 + Math.pow(bandData.bass, 1.5) * 2.0;
+					const minScale = 0.5;
+					const maxBoost = 2.0;
+					const intensity = Math.pow(bandData.bass, 1.5);
+					const previous = p.material.uniforms.scaleFactor.value;
+					const target = minScale + intensity * maxBoost;
+					p.material.uniforms.scaleFactor.value = THREE.MathUtils.lerp(previous, target, 0.1);
 				}
 			}
 
-			// Mids = zoom forward/back slightly
+			// Mid frequencies: slow oscillation around x-axis:
+			const time = Date.now() * 0.002;  // slow oscillation rate
 			for (let p of midsGroup) {
-				p.position.z += Math.sin(Date.now() * 0.015) * bandData.mids * 2;
+				if (p && p.position) {
+					const intensity = Math.pow(bandData.mids, 1.5); // emphasize mids effect
+					const amplitude = 100 * intensity; // max range of movement (tune this)
+					const phase = p.userData.phase || 0;
+					p.position.x = Math.sin(time + phase) * amplitude;
+				}
 			}
 
-			// Highs = hue shift
+			// High frequencies = hue shift and oscillate around x-axis:			
 			for (let p of highsGroup) {
 				if (p.material?.uniforms?.hueShift) {
 					const t = Date.now() * 0.01;
@@ -615,6 +687,7 @@ function render() {
 					p.material.uniforms.hueShift.value = p.material.uniforms.hueShift.value % 1.0;
 				}
 			}
+			
 		}
 
 		for (let i = 0; i < positions.count; i++) {
@@ -636,9 +709,11 @@ function render() {
 			mat.uniforms.fogColor.value.copy(scene.fog.color);
 		}
 
+	    /*
 	    if (mat.uniforms && mat.uniforms.hueShift) {
 	      mat.uniforms.hueShift.value = (Date.now() * 0.00005) % 1;
 	    }
+	    */
 
 	    // Dynamically update fadeNear/fadeFar
 	    if (mat.uniforms.fadeNear && mat.uniforms.fadeFar) {
