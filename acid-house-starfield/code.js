@@ -199,9 +199,9 @@ function setupGUI() {
 		axesHelper.visible = val;
 	});
 
-	gui.add(settings, 'zSpeedMultiplier', 0.1, 5.0, 0.1).name('Z Speed');
+	gui.add(settings, 'zSpeedMultiplier', 0.1, 5.0, 0.1).name('Sprite Speed');
 
-	gui.add(settings, 'numSprites', 10, 500, 10).name('Sprites per Type').onChange(() => {
+	gui.add(settings, 'numSprites', 10, 500, 10).name('Number of Sprites/Type').onChange(() => {
 		// Clear and regenerate
 		sprite_objects.forEach(p => scene.remove(p));
 		sprite_objects = [];
