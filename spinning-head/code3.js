@@ -7,6 +7,8 @@ let tiles = [], tileGroup;
 let smokeParticles = [];
 let smokeTexture;
 
+let renderTarget, offscreenScene, offscreenCamera;
+
 init();
 
 function init() {
@@ -20,18 +22,20 @@ function init() {
 
 	scene = new THREE.Scene();
 
+	renderTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight);
+	offscreenScene = new THREE.Scene();
+	offscreenCamera = camera;
+
 	initGUI();
 
 	window.addEventListener('resize', onWindowResize);
 
 	// Load smoke
 	const textureLoader = new THREE.TextureLoader();
-	textureLoader.load('smoke_04.png', tex => smokeTexture = tex); // or your own texture path
+	textureLoader.load('smoke_04.png', tex => smokeTexture = tex); 
 
 	loadImage('rd-headshot-s.png');
-
 	animate();
-
 }
 
 
@@ -68,57 +72,37 @@ function initGUI()	{
 function explodeNow()	{
 	if (!mesh) return;
 	scene.remove(mesh);
-	createTilesFromMesh();
+
+	createTilesFromCapturedImage();
+
 	setTimeout(() => {
 		tiles.forEach(tile => tile.userData.exploding = true);
 		spawnSmokeParticles(mesh.position);
 	}, 100);
 
 	setTimeout(() => {
-		tiles.forEach(tile => {
-			tile.userData.exploding = false;
-			tile.userData.reassembling = true;
-		});
+		// Start fading the mesh back in
+		scene.add(mesh); // bring back ripple mesh, now fully transparent
+		mesh.material.opacity = 0.0;
 	}, 2500);
 
-	setTimeout(() => {
-		scene.remove(tileGroup);
-		scene.add(mesh);
-	}, 4500);
-}
+	// Gradually fade in
+	let fadeStart = null;
+	function fadeInMesh(timestamp) {
+		if (!fadeStart) fadeStart = timestamp;
+		const elapsed = (timestamp - fadeStart) / 1000; // seconds
 
-function spawnSmokeParticles(center) {
-	if (!smokeTexture) return;
-
-	for (let i = 0; i < 50; i++) {
-		const spriteMaterial = new THREE.SpriteMaterial({
-			map: smokeTexture,
-			transparent: true,
-			opacity: 0.5,
-			depthWrite: false
-		});
-
-		const sprite = new THREE.Sprite(spriteMaterial);
-		sprite.position.set(
-			center.x + (Math.random() - 0.5) * 50,
-			center.y + (Math.random() - 0.5) * 50,
-			0
-		);
-		sprite.scale.set(10, 10, 1);
-		sprite.userData.life = 1.0;
-		sprite.userData.velocity = new THREE.Vector3(
-			(Math.random() - 0.5) * 0.5,
-			(Math.random() - 0.5) * 0.5,
-			0.1 + Math.random() * 0.5
-		);
-
-		scene.add(sprite);
-		smokeParticles.push(sprite);
+		if (mesh.material.opacity < 1.0) {
+			mesh.material.opacity = Math.min(1.0, elapsed * 2.0); // fade-in over 0.5s
+			requestAnimationFrame(fadeInMesh);
+		} else {
+			scene.remove(tileGroup); // clean up
+		}
 	}
+	setTimeout(() => requestAnimationFrame(fadeInMesh), 2500);
 }
 
-
-function loadImage(url) {
+function loadImage(url, onLoad) {
 	const loader = new THREE.TextureLoader();
 	loader.load(url, (texture) => {
 		const maxSize = 100; // target size in world units
@@ -164,18 +148,26 @@ function loadImage(url) {
 				}
 			`,
 			transparent: true,
+			opacity: 0.0,
 			side: THREE.DoubleSide
 		});
 
 		mesh = new THREE.Mesh(geometry, material);
 		scene.add(mesh);
+
+		// Add duplicate to offscreen scene
+		const offscreenMesh = new THREE.Mesh(geometry.clone(), material);
+		offscreenScene.add(offscreenMesh);
+		mesh.userData.offscreenMesh = offscreenMesh;
+
+		if (onLoad) animate();
 	});
 }
 
-function createTilesFromMesh() {
+function createTilesFromCapturedImage() {
 	const tileSize = 5;
 	const geometry = mesh.geometry;
-	const texture = uniforms.uTexture.value;
+	const texture = renderTarget.texture;
 
 	tiles = [];
 	tileGroup = new THREE.Group();
@@ -212,18 +204,59 @@ function createTilesFromMesh() {
 	scene.add(tileGroup);
 }
 
+function spawnSmokeParticles(center) {
+	if (!smokeTexture) return;
+
+	for (let i = 0; i < 50; i++) {
+		const spriteMaterial = new THREE.SpriteMaterial({
+			map: smokeTexture,
+			transparent: true,
+			opacity: 0.5,
+			depthWrite: false
+		});
+
+		const sprite = new THREE.Sprite(spriteMaterial);
+		sprite.position.set(
+			center.x + (Math.random() - 0.5) * 50,
+			center.y + (Math.random() - 0.5) * 50,
+			0
+		);
+		sprite.scale.set(10, 10, 1);
+		sprite.userData.life = 1.0;
+		sprite.userData.velocity = new THREE.Vector3(
+			(Math.random() - 0.5) * 0.5,
+			(Math.random() - 0.5) * 0.5,
+			0.1 + Math.random() * 0.5
+		);
+
+		scene.add(sprite);
+		smokeParticles.push(sprite);
+	}
+}
 
 
 function onWindowResize() {
 	camera.aspect = window.innerWidth / window.innerHeight;
 	camera.updateProjectionMatrix();
 	renderer.setSize(window.innerWidth, window.innerHeight);
+	renderTarget.setSize(window.innerWidth, window.innerHeight);
 }
 
 function animate() {
 	requestAnimationFrame(animate);
 
-	// Animate smoke particles:
+	// Render ripple mesh to offscreen texture
+	if (uniforms && mesh && mesh.userData?.offscreenMesh) {
+		uniforms.uTime.value += 0.02;
+		mesh.rotation.y += guiData.spin_speed;
+		mesh.userData.offscreenMesh.rotation.y = mesh.rotation.y;
+
+		renderer.setRenderTarget(renderTarget);
+		renderer.render(offscreenScene, offscreenCamera);
+		renderer.setRenderTarget(null);
+	}
+
+	// Animate smoke particles
 	for (let i = smokeParticles.length - 1; i >= 0; i--) {
 		const p = smokeParticles[i];
 		p.position.add(p.userData.velocity);
@@ -239,11 +272,7 @@ function animate() {
 		}
 	}
 
-	if (mesh && scene.children.includes(mesh)) {
-		mesh.rotation.y += guiData.spin_speed;
-		uniforms.uTime.value += 0.02;
-	}
-
+	// Tile animations
 	tiles.forEach(tile => {
 		if (tile.userData.exploding) {
 			tile.position.add(tile.userData.velocity);
