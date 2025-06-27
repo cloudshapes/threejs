@@ -20,6 +20,22 @@ function init() {
 
 	scene = new THREE.Scene();
 
+	initGUI();
+
+	window.addEventListener('resize', onWindowResize);
+
+	// Load smoke
+	const textureLoader = new THREE.TextureLoader();
+	textureLoader.load('smoke_04.png', tex => smokeTexture = tex); // or your own texture path
+
+	loadImage('rd-headshot-s.png');
+
+	animate();
+
+}
+
+
+function initGUI()	{
 	gui = new GUI();
 
 	guiData = {};
@@ -39,27 +55,7 @@ function init() {
 		ripple_amplitude: 4.385,
 		ripple_frequency: 18.52,
 		ripple_speed: 4.695,
-		explodeNow: () => {
-			if (!mesh) return;
-			scene.remove(mesh);
-			createTilesFromMesh();
-			setTimeout(() => {
-				tiles.forEach(tile => tile.userData.exploding = true);
-				spawnSmokeParticles(mesh.position);
-			}, 100);
-
-			setTimeout(() => {
-				tiles.forEach(tile => {
-					tile.userData.exploding = false;
-					tile.userData.reassembling = true;
-				});
-			}, 2500);
-
-			setTimeout(() => {
-				scene.remove(tileGroup);
-				scene.add(mesh);
-			}, 4500);
-		}
+		explodeNow: explodeNow
 	};
 
 	gui.add(guiData, 'spin_speed', 0.0, 0.05).name('Spin Speed');
@@ -67,16 +63,28 @@ function init() {
 	gui.add(guiData, 'ripple_frequency', 0.0, 20.0).name('Ripple Frequency').onChange(val => uniforms.uFrequency.value = val);
 	gui.add(guiData, 'ripple_speed', 0.0, 5.0).name('Ripple Speed').onChange(val => uniforms.uSpeed.value = val);
 	gui.add(guiData, 'explodeNow').name('💥 Shatter & Reassemble');
+}
 
-	window.addEventListener('resize', onWindowResize);
+function explodeNow()	{
+	if (!mesh) return;
+	scene.remove(mesh);
+	createTilesFromMesh();
+	setTimeout(() => {
+		tiles.forEach(tile => tile.userData.exploding = true);
+		spawnSmokeParticles(mesh.position);
+	}, 100);
 
-	// Load smoke
-	const textureLoader = new THREE.TextureLoader();
-	textureLoader.load('smoke_04.png', tex => smokeTexture = tex); // or your own texture path
+	setTimeout(() => {
+		tiles.forEach(tile => {
+			tile.userData.exploding = false;
+			tile.userData.reassembling = true;
+		});
+	}, 2500);
 
-	// loadImage('test.png');
-	loadImage('rd-headshot-s.png');
-
+	setTimeout(() => {
+		scene.remove(tileGroup);
+		scene.add(mesh);
+	}, 4500);
 }
 
 function spawnSmokeParticles(center) {
@@ -161,9 +169,6 @@ function loadImage(url) {
 
 		mesh = new THREE.Mesh(geometry, material);
 		scene.add(mesh);
-
-		animate();
-
 	});
 }
 
@@ -213,7 +218,6 @@ function onWindowResize() {
 	camera.aspect = window.innerWidth / window.innerHeight;
 	camera.updateProjectionMatrix();
 	renderer.setSize(window.innerWidth, window.innerHeight);
-	animate();
 }
 
 function animate() {
