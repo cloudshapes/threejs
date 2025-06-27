@@ -87,30 +87,40 @@ function explodeNow() {
 
 	createTilesFromCapturedImage();
 
+	// 1. Start explosion
 	setTimeout(() => {
 		tiles.forEach(tile => tile.userData.exploding = true);
 		spawnSmokeParticles(mesh.position);
 	}, 100);
 
+	// 2. Stop explosion, begin reassembly
+	setTimeout(() => {
+		tiles.forEach(tile => {
+			tile.userData.exploding = false;
+			tile.userData.reassembling = true;
+		});
+	}, 2000);
+
+	// 3. After tiles have had time to reassemble, fade in the ripple mesh
 	setTimeout(() => {
 		scene.add(mesh);
 		mesh.material.opacity = 0.0;
-	}, 2500);
 
-	let fadeStart = null;
-	function fadeInMesh(timestamp) {
-		if (!fadeStart) fadeStart = timestamp;
-		const elapsed = (timestamp - fadeStart) / 1000;
+		let fadeStart = null;
+		function fadeInMesh(timestamp) {
+			if (!fadeStart) fadeStart = timestamp;
+			const elapsed = (timestamp - fadeStart) / 1000;
 
-		if (mesh.material.opacity < 1.0) {
-			mesh.material.opacity = Math.min(1.0, elapsed * 2.0);
-			requestAnimationFrame(fadeInMesh);
-		} else {
-			scene.remove(tileGroup);
-			isExploding = false; // 🔁 Reset flag here
+			if (mesh.material.opacity < 1.0) {
+				mesh.material.opacity = Math.min(1.0, elapsed * 2.0);
+				requestAnimationFrame(fadeInMesh);
+			} else {
+				scene.remove(tileGroup);
+				isExploding = false;
+			}
 		}
-	}
-	setTimeout(() => requestAnimationFrame(fadeInMesh), 2500);
+		requestAnimationFrame(fadeInMesh);
+	}, 4000); // wait 2s reassembly + ~2s fade delay
 }
 
 
