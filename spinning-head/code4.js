@@ -80,6 +80,7 @@ function initGUI()	{
 	}
 }
 
+
 function explodeNow() {
 	if (!mesh || isExploding) return;
 	isExploding = true;
@@ -87,40 +88,60 @@ function explodeNow() {
 
 	createTilesFromCapturedImage();
 
-	// 1. Start explosion
+	// Step 1: Explosion + smoke
 	setTimeout(() => {
-		tiles.forEach(tile => tile.userData.exploding = true);
+		tiles.forEach(tile => {
+			tile.userData.exploding = true;
+			tile.userData.reassembling = false;
+		});
 		spawnSmokeParticles(mesh.position);
 	}, 100);
 
-	// 2. Stop explosion, begin reassembly
+	// Step 2: Reassembly (no fade yet)
 	setTimeout(() => {
 		tiles.forEach(tile => {
 			tile.userData.exploding = false;
 			tile.userData.reassembling = true;
 		});
-	}, 2000);
 
-	// 3. After tiles have had time to reassemble, fade in the ripple mesh
-	setTimeout(() => {
-		scene.add(mesh);
-		mesh.material.opacity = 0.0;
+		// Poll until tiles are fully back in place
+		let reassemblyChecker = setInterval(() => {
+			const allSnapped = tiles.every(tile =>
+				tile.position.distanceTo(tile.userData.originalPos) < 0.5
+			);
 
-		let fadeStart = null;
-		function fadeInMesh(timestamp) {
-			if (!fadeStart) fadeStart = timestamp;
-			const elapsed = (timestamp - fadeStart) / 1000;
+			if (allSnapped) {
+				clearInterval(reassemblyChecker);
 
-			if (mesh.material.opacity < 1.0) {
-				mesh.material.opacity = Math.min(1.0, elapsed * 2.0);
-				requestAnimationFrame(fadeInMesh);
-			} else {
-				scene.remove(tileGroup);
-				isExploding = false;
+				// Wait 0.5s before bringing mesh back
+				setTimeout(() => {
+					// Remove tiles
+					scene.remove(tileGroup);
+
+					mesh.material.opacity = 0.0;
+					scene.add(mesh);
+
+					let fadeStart = null;
+					function fadeInMesh(timestamp) {
+						if (!fadeStart) fadeStart = timestamp;
+						const elapsed = (timestamp - fadeStart) / 1000;
+						const progress = Math.min(1.0, elapsed / 2.0);
+
+						mesh.material.opacity = progress;
+
+						if (progress < 1.0) {
+							requestAnimationFrame(fadeInMesh);
+						} else {
+							isExploding = false;
+						}
+					}
+
+					requestAnimationFrame(fadeInMesh);
+				}, 2000);
+
 			}
-		}
-		requestAnimationFrame(fadeInMesh);
-	}, 4000); // wait 2s reassembly + ~2s fade delay
+		}, 100);
+	}, 2000); // start reassembly after 2s
 }
 
 
