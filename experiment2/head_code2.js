@@ -1,13 +1,11 @@
 import * as THREE from 'three';
-import Stats from 'three/addons/libs/stats.module.js';
-// import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
-import { SVGLoader } from 'three/addons/loaders/SVGLoader.js';
 
-let renderer, scene, camera, gui, guiData, controls;
+let renderer, scene, camera, gui, guiData;
 let mesh, uniforms;
 let tiles = [], tileGroup;
-
+let smokeParticles = [];
+let smokeTexture;
 
 init();
 
@@ -20,20 +18,7 @@ function init() {
 	renderer.setPixelRatio( window.devicePixelRatio );
 	document.body.appendChild(renderer.domElement);
 
-	/*
-	controls = new OrbitControls(camera, renderer.domElement);
-	controls.addEventListener( 'change', animate );
-	controls.screenSpacePanning = true;
-	*/
-
 	scene = new THREE.Scene();
-
-	/*
-	spin speed: 0.0113
-	Ripple Amplitude: 3.4
-	Ripple Frequency: 19.5
-	Ripple Speed: 2.605
-	*/
 
 	gui = new GUI();
 
@@ -42,7 +27,12 @@ function init() {
 
 	gui.add(guiData, 'explode', 0.0, 1.0).name('Explode').onChange(val => uniforms.uExplode.value = val);
 
-
+	/* Defaults:
+	spin speed: 0.0113
+	Ripple Amplitude: 3.4
+	Ripple Frequency: 19.5
+	Ripple Speed: 2.605
+	*/
 	gui = new GUI();
 	guiData = {
 		spin_speed: 0.0113,
@@ -55,6 +45,7 @@ function init() {
 			createTilesFromMesh();
 			setTimeout(() => {
 				tiles.forEach(tile => tile.userData.exploding = true);
+				spawnSmokeParticles(mesh.position);
 			}, 100);
 
 			setTimeout(() => {
@@ -79,10 +70,45 @@ function init() {
 
 	window.addEventListener('resize', onWindowResize);
 
+	// Load smoke
+	const textureLoader = new THREE.TextureLoader();
+	textureLoader.load('smoke_04.png', tex => smokeTexture = tex); // or your own texture path
+
 	// loadImage('test.png');
 	loadImage('rd-headshot-s.png');
 
 }
+
+function spawnSmokeParticles(center) {
+	if (!smokeTexture) return;
+
+	for (let i = 0; i < 50; i++) {
+		const spriteMaterial = new THREE.SpriteMaterial({
+			map: smokeTexture,
+			transparent: true,
+			opacity: 0.5,
+			depthWrite: false
+		});
+
+		const sprite = new THREE.Sprite(spriteMaterial);
+		sprite.position.set(
+			center.x + (Math.random() - 0.5) * 50,
+			center.y + (Math.random() - 0.5) * 50,
+			0
+		);
+		sprite.scale.set(10, 10, 1);
+		sprite.userData.life = 1.0;
+		sprite.userData.velocity = new THREE.Vector3(
+			(Math.random() - 0.5) * 0.5,
+			(Math.random() - 0.5) * 0.5,
+			0.1 + Math.random() * 0.5
+		);
+
+		scene.add(sprite);
+		smokeParticles.push(sprite);
+	}
+}
+
 
 function loadImage(url) {
 	const loader = new THREE.TextureLoader();
@@ -192,6 +218,22 @@ function onWindowResize() {
 
 function animate() {
 	requestAnimationFrame(animate);
+
+	// Animate smoke particles:
+	for (let i = smokeParticles.length - 1; i >= 0; i--) {
+		const p = smokeParticles[i];
+		p.position.add(p.userData.velocity);
+		p.userData.life -= 0.01;
+		p.material.opacity = p.userData.life;
+
+		const scale = 10 + (1 - p.userData.life) * 20;
+		p.scale.set(scale, scale, 1);
+
+		if (p.userData.life <= 0) {
+			scene.remove(p);
+			smokeParticles.splice(i, 1);
+		}
+	}
 
 	if (mesh && scene.children.includes(mesh)) {
 		mesh.rotation.y += guiData.spin_speed;
